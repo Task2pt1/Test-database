@@ -101,3 +101,36 @@ if st.button("Show Full Database"):
 
     for r in roots:
         show_tree(r)
+        
+# --- BUTTON: show hierarchy ---
+if st.button("Show Full Hierarchy"):
+
+    # get parent → children
+    data = run_query("""
+    MATCH (n:String)
+    OPTIONAL MATCH (n)-[:HAS_CHILD]->(c:String)
+    RETURN n.value AS parent, collect(c.value) AS children
+    ORDER BY parent
+    """)
+
+    tree = {row["parent"]: row["children"] for row in data}
+
+    # find roots
+    roots = run_query("""
+    MATCH (n:String)
+    WHERE NOT ( ()-[:HAS_CHILD]->(n) )
+    RETURN n.value AS root
+    """)
+    roots = [r["root"] for r in roots]
+
+    # recursive tree display
+    def show_tree(node, level=0):
+        st.markdown(f"{'&nbsp;&nbsp;&nbsp;' * level}• {node}", unsafe_allow_html=True)
+        for child in tree.get(node, []):
+            if child:
+                show_tree(child, level + 1)
+
+    st.subheader("Hierarchy")
+
+    for r in roots:
+        show_tree(r)
