@@ -8,7 +8,12 @@ Created on Tue Mar 31 21:24:24 2026
 
 from neo4j import GraphDatabase
 import streamlit as st
-st.write(st.secrets)
+
+uri = st.secrets["NEO4J_URI"]
+user = st.secrets["NEO4J_USERNAME"]
+password = st.secrets["NEO4J_PASSWORD"]
+driver = GraphDatabase.driver(uri, auth=(user, password))
+
 def run_query(q, params=None):
     with driver.session() as session:
         return [r.data() for r in session.run(q, params or {})]
