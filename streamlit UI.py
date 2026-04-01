@@ -69,11 +69,11 @@ if st.button("Load Top-Level Categories"):
 
 if "roots" in st.session_state:
     selected_root = st.selectbox("Select Category", st.session_state["roots"])
-    
-if st.button("Show Level 2"):
-    res = run_query("""
-    MATCH (p:String {value:$name})-[:HAS_CHILD]->(c)
-    RETURN c.value AS child
-    """, {"name": selected_root})
-    st.write(res)
+
+    if st.button("Show Level 2"):
+        res = run_query("""
+        MATCH (p:String {value:$name})-[:HAS_CHILD]->(c)
+        RETURN c.value AS child
+        """, {"name": selected_root})
+        st.write(res)
     
