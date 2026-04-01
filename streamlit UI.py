@@ -9,27 +9,6 @@ Created on Tue Mar 31 21:24:24 2026
 from neo4j import GraphDatabase
 import streamlit as st
 
-
-cred_path = "/Users/Lumin/Documents/SBR/SBR_scripts/neo4j_AIF/neo4j scripts/Neo4j-3066759b-Created-2026-03-30.txt"
-
-creds = {}
-with open(cred_path, "r") as f:
-    for line in f:
-        if "=" in line:
-            k, v = line.strip().split("=", 1)
-            creds[k] = v
-
-uri = creds["NEO4J_URI"]
-user = creds["NEO4J_USERNAME"]
-password = creds["NEO4J_PASSWORD"]
-
-driver = GraphDatabase.driver(uri, auth=(user, password))
-session = driver.session()
-
-
-
-
-
 def run_query(q, params=None):
     with driver.session() as session:
         return [r.data() for r in session.run(q, params or {})]
