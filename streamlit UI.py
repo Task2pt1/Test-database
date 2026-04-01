@@ -67,13 +67,37 @@ if st.button("Load Top-Level Categories"):
         """)
     ]
 
-if "roots" in st.session_state:
-    selected_root = st.selectbox("Select Category", st.session_state["roots"])
+# --- BUTTON: show full database ---
+if st.button("Show Full Database"):
+    data = run_query("""
+    MATCH (n:String)
+    OPTIONAL MATCH (n)-[:HAS_CHILD]->(c:String)
+    RETURN n.value AS parent, collect(c.value) AS children
+    ORDER BY parent
+    """)
 
-    if st.button("Show Level 2"):
-        res = run_query("""
-        MATCH (p:String {value:$name})-[:HAS_CHILD]->(c)
-        RETURN c.value AS child
-        """, {"name": selected_root})
-        st.write(res)
-    
+    st.subheader("Full Graph (Table)")
+    st.dataframe(data)
+
+    # --- build tree ---
+    tree = {row["parent"]: row["children"] for row in data}
+
+    # --- find roots ---
+    roots = run_query("""
+    MATCH (n:String)
+    WHERE NOT ( ()-[:HAS_CHILD]->(n) )
+    RETURN n.value AS root
+    """)
+    roots = [r["root"] for r in roots]
+
+    # --- recursive display ---
+    def show_tree(node, level=0):
+        st.write("  " * level + "• " + node)
+        for child in tree.get(node, []):
+            if child:
+                show_tree(child, level + 1)
+
+    st.subheader("Hierarchy View")
+
+    for r in roots:
+        show_tree(r)
