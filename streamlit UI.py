@@ -8,7 +8,7 @@ Created on Tue Mar 31 21:24:24 2026
 
 from neo4j import GraphDatabase
 import streamlit as st
-
+st.write(st.secrets)
 def run_query(q, params=None):
     with driver.session() as session:
         return [r.data() for r in session.run(q, params or {})]
