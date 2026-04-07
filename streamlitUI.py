@@ -58,20 +58,37 @@ def get_children(parent_value):
     return clean_options([r.get("child") for r in rows])
 
 
-def get_next_level_from_checked(checked_values):
-    if not checked_values:
+def get_next_children(parent_value):
+    if not parent_value:
         return []
 
     rows = run_query("""
-        MATCH (p:String)-[:HAS_CHILD]->(c:String)
-        WHERE p.value IN $checked_values
-          AND c.value IS NOT NULL
+        MATCH (p:String {value: $parent_value})-[:HAS_CHILD]->(c:String)
+        WHERE c.value IS NOT NULL
           AND trim(c.value) <> ""
         RETURN DISTINCT c.value AS child
         ORDER BY child
-    """, {"checked_values": checked_values})
+    """, {"parent_value": parent_value})
     return clean_options([r.get("child") for r in rows])
 
+
+def get_grouped_next_levels(checked_values):
+    grouped = {}
+    for value in checked_values:
+        grouped[value] = get_next_children(value)
+    return grouped
+
+
+def flatten_grouped_options(grouped):
+    merged = []
+    seen = set()
+    for parent, children in grouped.items():
+        for child in children:
+            label = f"{parent} → {child}"
+            if label not in seen:
+                seen.add(label)
+                merged.append(label)
+    return merged
 
 top_levels = get_top_levels()
 
@@ -94,7 +111,8 @@ level1_checked = st.multiselect(
     key="level1_checked",
 )
 
-next_dropdown_options = get_next_level_from_checked(level1_checked)
+grouped_next_levels = get_grouped_next_levels(level1_checked)
+next_dropdown_options = flatten_grouped_options(grouped_next_levels)
 
 selected_next = st.selectbox(
     "Next dropdown",
@@ -106,6 +124,18 @@ selected_next = st.selectbox(
 st.write("Top level selected:", selected_top_level)
 st.write("Checked boxes:", level1_checked)
 st.write("Next dropdown selected:", selected_next)
+
+st.subheader("Collected next-level options for all checked boxes")
+for parent, children in grouped_next_levels.items():
+    st.write(f"{parent}:")
+    if children:
+        st.write(children)
+    else:
+        st.write("No next-level options")
+
+
+
+
 # --- BUTTON 1: count nodes ---
 if st.button("Count Nodes"):
     res = run_query("MATCH (n:String) RETURN count(n) AS total")
