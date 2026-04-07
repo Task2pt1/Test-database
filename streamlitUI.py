@@ -8,7 +8,6 @@ driver = GraphDatabase.driver(uri, auth=(user, password))
 
 st.title("AIF Graph Viewer 2")
 
-
 def run_query(query: str, params: dict | None = None) -> list[dict]:
     with driver.session() as session:
         return [record.data() for record in session.run(query, params or {})]
@@ -23,7 +22,7 @@ def clean_text(value) -> str | None:
     return text
 
 
-def get_top_level_nodes() -> list[dict]:
+def get_root_nodes() -> list[dict]:
     rows = run_query(
         """
         MATCH (n:String)
@@ -62,52 +61,52 @@ def get_children(parent_id: str) -> list[dict]:
     ]
 
 
-def render_path_dropdown(level: int, nodes: list[dict]) -> str | None:
+def render_select(level: int, nodes: list[dict]) -> str | None:
     option_ids = [node["id"] for node in nodes]
-    labels_by_id = {node["id"]: node["value"] for node in nodes}
+    labels = {node["id"]: node["value"] for node in nodes}
 
-    saved_id = st.session_state.path_ids[level] if level < len(st.session_state.path_ids) else None
+    saved_id = st.session_state.selected_ids[level] if level < len(st.session_state.selected_ids) else None
     if saved_id not in option_ids:
         saved_id = None
 
-    selected_id = st.selectbox(
+    return st.selectbox(
         "",
         options=option_ids,
         index=option_ids.index(saved_id) if saved_id in option_ids else None,
         placeholder="Select",
-        key=f"path_{level}",
+        key=f"level_{level}",
         label_visibility="collapsed",
-        format_func=lambda node_id: labels_by_id[node_id],
+        format_func=lambda node_id: labels[node_id],
     )
-    return selected_id
+if "selected_ids" not in st.session_state:
+    st.session_state.selected_ids = []
 
-
-if "path_ids" not in st.session_state:
-    st.session_state.path_ids = []
-
-nodes = get_top_level_nodes()
+nodes = get_root_nodes()
 level = 0
 
 while nodes:
-    selected_id = render_path_dropdown(level, nodes)
+    selected_id = render_select(level, nodes)
 
     if selected_id is None:
-        st.session_state.path_ids = st.session_state.path_ids[:level]
+        st.session_state.selected_ids = st.session_state.selected_ids[:level]
         break
 
-    if len(st.session_state.path_ids) > level:
-        st.session_state.path_ids[level] = selected_id
+    if len(st.session_state.selected_ids) > level:
+        st.session_state.selected_ids[level] = selected_id
     else:
-        st.session_state.path_ids.append(selected_id)
+        st.session_state.selected_ids.append(selected_id)
 
-    st.session_state.path_ids = st.session_state.path_ids[: level + 1]
+    st.session_state.selected_ids = st.session_state.selected_ids[: level + 1]
 
-    child_nodes = get_children(selected_id)
-    if not child_nodes:
+    nodes = get_children(selected_id)
+    if not nodes:
         break
 
-    nodes = child_nodes
     level += 1
+
+
+
+    
 # --- BUTTON 1: count nodes ---
 if st.button("Count Nodes"):
     res = run_query("MATCH (n:String) RETURN count(n) AS total")
