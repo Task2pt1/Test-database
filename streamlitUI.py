@@ -12,6 +12,19 @@ def run_query(q, params=None):
 
 st.title("AIF Graph Viewer 2")
 
+from neo4j import GraphDatabase
+import streamlit as st
+
+uri = st.secrets["NEO4J_URI"]
+user = st.secrets["NEO4J_USERNAME"]
+password = st.secrets["NEO4J_PASSWORD"]
+driver = GraphDatabase.driver(uri, auth=(user, password))
+
+
+def run_query(query, params=None):
+    with driver.session() as session:
+        return [r.data() for r in session.run(query, params or {})]
+
 
 def clean_options(values):
     return sorted({v for v in values if v not in (None, "", "null")})
@@ -83,7 +96,7 @@ if level2_options:
     st.write("Next selected:", level2_selected)
 else:
     st.info("No non-null next options.")
-
+    
 # --- BUTTON 1: count nodes ---
 if st.button("Count Nodes"):
     res = run_query("MATCH (n:String) RETURN count(n) AS total")
