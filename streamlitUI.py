@@ -12,91 +12,100 @@ def run_query(q, params=None):
 
 st.title("AIF Graph Viewer 2")
 
-from neo4j import GraphDatabase
-import streamlit as st
-
-uri = st.secrets["NEO4J_URI"]
-user = st.secrets["NEO4J_USERNAME"]
-password = st.secrets["NEO4J_PASSWORD"]
-driver = GraphDatabase.driver(uri, auth=(user, password))
-
-
 def run_query(query, params=None):
     with driver.session() as session:
         return [r.data() for r in session.run(query, params or {})]
 
 
 def clean_options(values):
-    return sorted({v for v in values if v not in (None, "", "null")})
+    seen = set()
+    result = []
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if not text or text.lower() == "null":
+            continue
+        if text not in seen:
+            seen.add(text)
+            result.append(text)
+    return result
 
 
-def get_materials():
+def get_top_levels():
     rows = run_query("""
-        MATCH (m:Material)
-        RETURN m.material AS material
-        ORDER BY material
+        MATCH (n:String)
+        WHERE n.value IS NOT NULL
+          AND trim(n.value) <> ""
+          AND NOT (()-[:HAS_CHILD]->(n))
+        RETURN n.value AS category
+        ORDER BY category
     """)
-    return clean_options([r.get("material") for r in rows])
+    return clean_options([r.get("category") for r in rows])
 
 
-def get_level1_options(material_name):
-    if not material_name:
+def get_children(parent_value):
+    if not parent_value:
         return []
 
     rows = run_query("""
-        MATCH (m:Material {material: $name})-[r]->()
-        RETURN DISTINCT type(r) AS rel
-        ORDER BY rel
-    """, {"name": material_name})
-    return clean_options([r.get("rel") for r in rows])
+        MATCH (p:String {value: $parent_value})-[:HAS_CHILD]->(c:String)
+        WHERE c.value IS NOT NULL
+          AND trim(c.value) <> ""
+        RETURN DISTINCT c.value AS child
+        ORDER BY child
+    """, {"parent_value": parent_value})
+    return clean_options([r.get("child") for r in rows])
 
 
-def get_next_options(material_name, selected_rels):
-    if not material_name or not selected_rels:
+def get_next_level_from_checked(checked_values):
+    if not checked_values:
         return []
 
     rows = run_query("""
-        MATCH (m:Material {material: $name})-[r1]->(n)
-        WHERE type(r1) IN $selected_rels
-        MATCH (n)-[r2]->()
-        RETURN DISTINCT type(r2) AS rel
-        ORDER BY rel
-    """, {
-        "name": material_name,
-        "selected_rels": selected_rels,
-    })
-    return clean_options([r.get("rel") for r in rows])
+        MATCH (p:String)-[:HAS_CHILD]->(c:String)
+        WHERE p.value IN $checked_values
+          AND c.value IS NOT NULL
+          AND trim(c.value) <> ""
+        RETURN DISTINCT c.value AS child
+        ORDER BY child
+    """, {"checked_values": checked_values})
+    return clean_options([r.get("child") for r in rows])
 
 
-st.title("AIF Graph Viewer 2")
-st.subheader("Dynamic Dropdowns")
+top_levels = get_top_levels()
 
-materials = get_materials()
+if not top_levels:
+    st.error("No top-level categories found.")
+    st.stop()
 
-if materials:
-    selected_material = st.selectbox("Material", materials, index=None, placeholder="Select material")
-else:
-    selected_material = None
-    st.warning("No non-null materials found.")
+selected_top_level = st.selectbox(
+    "Top Level",
+    top_levels,
+    index=None,
+    placeholder="Select a top-level category",
+)
 
-level1_options = get_level1_options(selected_material)
+level1_options = get_children(selected_top_level)
 
-if level1_options:
-    level1_selected = st.multiselect("Level 1", level1_options)
-else:
-    level1_selected = []
-    st.info("No non-null level 1 options.")
+level1_checked = st.multiselect(
+    "Check boxes",
+    level1_options,
+    key="level1_checked",
+)
 
-st.write("Checked boxes:", level1_selected)
+next_dropdown_options = get_next_level_from_checked(level1_checked)
 
-level2_options = get_next_options(selected_material, level1_selected)
+selected_next = st.selectbox(
+    "Next dropdown",
+    next_dropdown_options,
+    index=None,
+    placeholder="Select next level",
+)
 
-if level2_options:
-    level2_selected = st.selectbox("Next dropdown", level2_options, index=None, placeholder="Select next option")
-    st.write("Next selected:", level2_selected)
-else:
-    st.info("No non-null next options.")
-    
+st.write("Top level selected:", selected_top_level)
+st.write("Checked boxes:", level1_checked)
+st.write("Next dropdown selected:", selected_next)
 # --- BUTTON 1: count nodes ---
 if st.button("Count Nodes"):
     res = run_query("MATCH (n:String) RETURN count(n) AS total")
