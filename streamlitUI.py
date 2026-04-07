@@ -13,22 +13,8 @@ def run_query(q, params=None):
 st.title("AIF Graph Viewer 2")
 
 
-
-# app.py
-
-from neo4j import GraphDatabase
-import streamlit as st
-
-uri = st.secrets["NEO4J_URI"]
-user = st.secrets["NEO4J_USERNAME"]
-password = st.secrets["NEO4J_PASSWORD"]
-
-driver = GraphDatabase.driver(uri, auth=(user, password))
-
-
-def run_query(query, params=None):
-    with driver.session() as session:
-        return [r.data() for r in session.run(query, params or {})]
+def clean_options(values):
+    return sorted({v for v in values if v not in (None, "", "null")})
 
 
 def get_materials():
@@ -37,20 +23,23 @@ def get_materials():
         RETURN m.material AS material
         ORDER BY material
     """)
-    return [r["material"] for r in rows if r["material"]]
+    return clean_options([r.get("material") for r in rows])
 
 
 def get_level1_options(material_name):
+    if not material_name:
+        return []
+
     rows = run_query("""
         MATCH (m:Material {material: $name})-[r]->()
         RETURN DISTINCT type(r) AS rel
         ORDER BY rel
     """, {"name": material_name})
-    return [r["rel"] for r in rows]
+    return clean_options([r.get("rel") for r in rows])
 
 
 def get_next_options(material_name, selected_rels):
-    if not selected_rels:
+    if not material_name or not selected_rels:
         return []
 
     rows = run_query("""
@@ -63,27 +52,37 @@ def get_next_options(material_name, selected_rels):
         "name": material_name,
         "selected_rels": selected_rels,
     })
-    return [r["rel"] for r in rows]
+    return clean_options([r.get("rel") for r in rows])
 
 
-st.title("Dynamic Dropdowns")
+st.title("AIF Graph Viewer 2")
+st.subheader("Dynamic Dropdowns")
 
 materials = get_materials()
-selected_material = st.selectbox("Material", materials)
+
+if materials:
+    selected_material = st.selectbox("Material", materials, index=None, placeholder="Select material")
+else:
+    selected_material = None
+    st.warning("No non-null materials found.")
 
 level1_options = get_level1_options(selected_material)
-level1_selected = st.multiselect("Level 1", level1_options)
+
+if level1_options:
+    level1_selected = st.multiselect("Level 1", level1_options)
+else:
+    level1_selected = []
+    st.info("No non-null level 1 options.")
 
 st.write("Checked boxes:", level1_selected)
 
 level2_options = get_next_options(selected_material, level1_selected)
 
 if level2_options:
-    level2_selected = st.selectbox("Next dropdown", level2_options)
+    level2_selected = st.selectbox("Next dropdown", level2_options, index=None, placeholder="Select next option")
     st.write("Next selected:", level2_selected)
 else:
-    st.info("No next options yet.")
-
+    st.info("No non-null next options.")
 
 # --- BUTTON 1: count nodes ---
 if st.button("Count Nodes"):
