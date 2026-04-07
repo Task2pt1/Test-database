@@ -8,6 +8,7 @@ driver = GraphDatabase.driver(uri, auth=(user, password))
 
 st.title("AIF Graph Viewer 2")
 
+
 def run_query(query: str, params: dict | None = None) -> list[dict]:
     with driver.session() as session:
         return [record.data() for record in session.run(query, params or {})]
@@ -31,7 +32,7 @@ def get_top_level_nodes() -> list[dict]:
           AND trim(n.value) <> ""
           AND toLower(trim(n.value)) <> "null"
         RETURN elementId(n) AS id, n.value AS value
-        ORDER BY n.value
+        ORDER BY n.value, elementId(n)
         """
     )
     return [
@@ -50,7 +51,7 @@ def get_children(parent_id: str) -> list[dict]:
           AND trim(c.value) <> ""
           AND toLower(trim(c.value)) <> "null"
         RETURN elementId(c) AS id, c.value AS value
-        ORDER BY c.value
+        ORDER BY c.value, elementId(c)
         """,
         {"parent_id": parent_id},
     )
@@ -61,56 +62,52 @@ def get_children(parent_id: str) -> list[dict]:
     ]
 
 
-def get_node_by_value(nodes: list[dict], value: str | None) -> dict | None:
-    for node in nodes:
-        if node["value"] == value:
-            return node
-    return None
+def render_path_dropdown(level: int, nodes: list[dict]) -> str | None:
+    option_ids = [node["id"] for node in nodes]
+    labels_by_id = {node["id"]: node["value"] for node in nodes}
+
+    saved_id = st.session_state.path_ids[level] if level < len(st.session_state.path_ids) else None
+    if saved_id not in option_ids:
+        saved_id = None
+
+    selected_id = st.selectbox(
+        "",
+        options=option_ids,
+        index=option_ids.index(saved_id) if saved_id in option_ids else None,
+        placeholder="Select",
+        key=f"path_{level}",
+        label_visibility="collapsed",
+        format_func=lambda node_id: labels_by_id[node_id],
+    )
+    return selected_id
 
 
-if "drill_path" not in st.session_state:
-    st.session_state.drill_path = []
+if "path_ids" not in st.session_state:
+    st.session_state.path_ids = []
 
-level = 0
 nodes = get_top_level_nodes()
+level = 0
 
 while nodes:
-    options = [node["value"] for node in nodes]
-    saved_value = st.session_state.drill_path[level] if level < len(st.session_state.drill_path) else None
+    selected_id = render_path_dropdown(level, nodes)
 
-    if saved_value not in options:
-        saved_value = None
-
-    selected_value = st.selectbox(
-        "",
-        options=options,
-        index=options.index(saved_value) if saved_value in options else None,
-        placeholder="Select",
-        key=f"drill_{level}",
-        label_visibility="collapsed",
-    )
-
-    if selected_value is None:
-        st.session_state.drill_path = st.session_state.drill_path[:level]
+    if selected_id is None:
+        st.session_state.path_ids = st.session_state.path_ids[:level]
         break
 
-    if len(st.session_state.drill_path) > level:
-        st.session_state.drill_path[level] = selected_value
-        st.session_state.drill_path = st.session_state.drill_path[: level + 1]
+    if len(st.session_state.path_ids) > level:
+        st.session_state.path_ids[level] = selected_id
     else:
-        st.session_state.drill_path.append(selected_value)
+        st.session_state.path_ids.append(selected_id)
 
-    selected_node = get_node_by_value(nodes, selected_value)
-    if selected_node is None:
-        break
+    st.session_state.path_ids = st.session_state.path_ids[: level + 1]
 
-    child_nodes = get_children(selected_node["id"])
+    child_nodes = get_children(selected_id)
     if not child_nodes:
         break
 
-    level += 1
     nodes = child_nodes
-
+    level += 1
 # --- BUTTON 1: count nodes ---
 if st.button("Count Nodes"):
     res = run_query("MATCH (n:String) RETURN count(n) AS total")
