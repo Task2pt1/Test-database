@@ -8,6 +8,7 @@ driver = GraphDatabase.driver(uri, auth=(user, password))
 
 st.title("AIF Graph Viewer 2")
 
+
 def run_query(query: str, params: dict | None = None) -> list[dict]:
     with driver.session() as session:
         return [record.data() for record in session.run(query, params or {})]
@@ -61,47 +62,50 @@ def get_children(parent_id: str) -> list[dict]:
     ]
 
 
-def render_select(level: int, nodes: list[dict]) -> str | None:
+def render_dropdown(level: int, nodes: list[dict]) -> str | None:
     option_ids = [node["id"] for node in nodes]
     labels = {node["id"]: node["value"] for node in nodes}
+    saved_id = st.session_state.path_ids[level] if level < len(st.session_state.path_ids) else None
 
-    saved_id = st.session_state.selected_ids[level] if level < len(st.session_state.selected_ids) else None
     if saved_id not in option_ids:
         saved_id = None
 
     return st.selectbox(
         "",
         options=option_ids,
-        index=option_ids.index(saved_id) if saved_id in option_ids else None,
+        index=option_ids.index(saved_id) if saved_id is not None else None,
         placeholder="Select",
-        key=f"level_{level}",
+        key=f"path_{level}",
         label_visibility="collapsed",
         format_func=lambda node_id: labels[node_id],
     )
-if "selected_ids" not in st.session_state:
-    st.session_state.selected_ids = []
 
-nodes = get_root_nodes()
+
+if "path_ids" not in st.session_state:
+    st.session_state.path_ids = []
+
 level = 0
+nodes = get_root_nodes()
 
-while nodes:
-    selected_id = render_select(level, nodes)
+while True:
+    if not nodes:
+        st.session_state.path_ids = st.session_state.path_ids[:level]
+        break
+
+    selected_id = render_dropdown(level, nodes)
 
     if selected_id is None:
-        st.session_state.selected_ids = st.session_state.selected_ids[:level]
+        st.session_state.path_ids = st.session_state.path_ids[:level]
         break
 
-    if len(st.session_state.selected_ids) > level:
-        st.session_state.selected_ids[level] = selected_id
+    if len(st.session_state.path_ids) > level:
+        st.session_state.path_ids[level] = selected_id
     else:
-        st.session_state.selected_ids.append(selected_id)
+        st.session_state.path_ids.append(selected_id)
 
-    st.session_state.selected_ids = st.session_state.selected_ids[: level + 1]
+    st.session_state.path_ids = st.session_state.path_ids[: level + 1]
 
     nodes = get_children(selected_id)
-    if not nodes:
-        break
-
     level += 1
 
 
