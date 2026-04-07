@@ -1,4 +1,3 @@
-
 from neo4j import GraphDatabase
 import streamlit as st
 
@@ -11,7 +10,64 @@ def run_query(q, params=None):
     with driver.session() as session:
         return [r.data() for r in session.run(q, params or {})]
 
-st.title("AIF Graph Viewer")
+st.title("AIF Graph Viewer 2")
+
+# --- materials ---
+materials = [r["material"] for r in run_query(
+    "MATCH (m:Material) RETURN m.material AS material ORDER BY material"
+)]
+
+selected_material = st.selectbox("Material", materials)
+
+# --- LEVEL 1 (YOU WERE MISSING THIS) ---
+lvl1_options = [
+    "id", "code", "database", "placement", "vector",
+    "synonyms", "comment", "citation", "standards", "region",
+    "engineering", "activity", "lcia", "cost"
+]
+
+lvl1_selected = st.multiselect("Level 1", lvl1_options)
+
+# --- MAIN LOOP ---
+for key in lvl1_selected:
+
+    st.subheader(key)
+
+    # STEP 1: go from Material → selected key
+    res = run_query(f"""
+    MATCH (m:Material {{material: $name}})
+    MATCH (m)-[:HAS_{key.upper()}]->(n)
+    RETURN n
+    """, {"name": selected_material})
+
+    # if nothing exists, skip
+    if not res:
+        st.write("No data")
+        continue
+
+    # STEP 2: from THAT node → what relationships exist
+    res2 = run_query(f"""
+    MATCH (m:Material {{material: $name}})
+    MATCH (m)-[:HAS_{key.upper()}]->(n)
+    MATCH (n)-[r]->()
+    RETURN DISTINCT type(r) AS rel
+    """, {"name": selected_material})
+
+    options = [r["rel"].replace("HAS_", "").lower() for r in res2]
+
+    lvl2_selected = st.multiselect(f"{key} → next", options)
+
+    # STEP 3: go deeper
+    for nxt in lvl2_selected:
+
+        res3 = run_query(f"""
+        MATCH (m:Material {{material: $name}})
+        MATCH (m)-[:HAS_{key.upper()}]->(n1)
+        MATCH (n1)-[:HAS_{nxt.upper()}]->(n2)
+        RETURN n2
+        """, {"name": selected_material})
+
+        st.write(f"{key} → {nxt}", res3)
 
 # --- BUTTON 1: count nodes ---
 if st.button("Count Nodes"):
