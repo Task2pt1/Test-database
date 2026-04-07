@@ -11,16 +11,8 @@ def run_query(q, params=None):
         return [r.data() for r in session.run(q, params or {})]
 
 st.title("AIF Graph Viewer 2")
-# app.py
 
-from __future__ import annotations
 
-import re
-from typing import Any
-
-import pandas as pd
-import streamlit as st
-from neo4j import GraphDatabase
 
 
 st.set_page_config(page_title="AIF Graph Viewer 2", layout="wide")
