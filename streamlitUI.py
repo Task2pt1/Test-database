@@ -6,11 +6,11 @@ user = st.secrets["NEO4J_USERNAME"]
 password = st.secrets["NEO4J_PASSWORD"]
 driver = GraphDatabase.driver(uri, auth=(user, password))
 
-def run_query(q, params=None):
-    with driver.session() as session:
-        return [r.data() for r in session.run(q, params or {})]
-
 st.title("AIF Graph Viewer 2")
+
+def run_query(query: str, params: dict | None = None) -> list[dict]:
+    with driver.session() as session:
+        return [record.data() for record in session.run(query, params or {})]
 
 
 def clean_text(value) -> str | None:
@@ -22,14 +22,14 @@ def clean_text(value) -> str | None:
     return text
 
 
-def get_root_options() -> list[dict]:
+def get_top_level_nodes() -> list[dict]:
     rows = run_query(
         """
         MATCH (n:String)
-        WHERE n.value IS NOT NULL
+        WHERE NOT ()-[:HAS_CHILD]->(n)
+          AND n.value IS NOT NULL
           AND trim(n.value) <> ""
           AND toLower(trim(n.value)) <> "null"
-          AND NOT ()-[:HAS_CHILD]->(n)
         RETURN elementId(n) AS id, n.value AS value
         ORDER BY n.value
         """
@@ -41,18 +41,18 @@ def get_root_options() -> list[dict]:
     ]
 
 
-def get_children(node_id: str) -> list[dict]:
+def get_children(parent_id: str) -> list[dict]:
     rows = run_query(
         """
         MATCH (p:String)-[:HAS_CHILD]->(c:String)
-        WHERE elementId(p) = $node_id
+        WHERE elementId(p) = $parent_id
           AND c.value IS NOT NULL
           AND trim(c.value) <> ""
           AND toLower(trim(c.value)) <> "null"
         RETURN elementId(c) AS id, c.value AS value
         ORDER BY c.value
         """,
-        {"node_id": node_id},
+        {"parent_id": parent_id},
     )
     return [
         {"id": row["id"], "value": clean_text(row["value"])}
@@ -61,87 +61,55 @@ def get_children(node_id: str) -> list[dict]:
     ]
 
 
-def get_children_for_many(node_ids: list[str]) -> list[dict]:
-    if not node_ids:
-        return []
-
-    rows = run_query(
-        """
-        MATCH (p:String)-[:HAS_CHILD]->(c:String)
-        WHERE elementId(p) IN $node_ids
-          AND c.value IS NOT NULL
-          AND trim(c.value) <> ""
-          AND toLower(trim(c.value)) <> "null"
-        RETURN DISTINCT elementId(c) AS id, c.value AS value
-        ORDER BY c.value
-        """,
-        {"node_ids": node_ids},
-    )
-    return [
-        {"id": row["id"], "value": clean_text(row["value"])}
-        for row in rows
-        if clean_text(row.get("value"))
-    ]
+def get_node_by_value(nodes: list[dict], value: str | None) -> dict | None:
+    for node in nodes:
+        if node["value"] == value:
+            return node
+    return None
 
 
-st.set_page_config(page_title="AIF Graph Viewer", layout="wide")
+if "drill_path" not in st.session_state:
+    st.session_state.drill_path = []
 
-if "selected_path" not in st.session_state:
-    st.session_state.selected_path = []
+level = 0
+nodes = get_top_level_nodes()
 
-root_options = get_root_options()
-root_labels = [item["value"] for item in root_options]
+while nodes:
+    options = [node["value"] for node in nodes]
+    saved_value = st.session_state.drill_path[level] if level < len(st.session_state.drill_path) else None
 
-selected_root = st.selectbox(
-    "",
-    options=root_labels,
-    index=None,
-    placeholder="Select first item",
-    key="level_0",
-)
+    if saved_value not in options:
+        saved_value = None
 
-if selected_root:
-    selected_root_node = next(
-        (item for item in root_options if item["value"] == selected_root),
-        None,
+    selected_value = st.selectbox(
+        "",
+        options=options,
+        index=options.index(saved_value) if saved_value in options else None,
+        placeholder="Select",
+        key=f"drill_{level}",
+        label_visibility="collapsed",
     )
 
-    if selected_root_node:
-        st.session_state.selected_path = [selected_root_node["id"]]
+    if selected_value is None:
+        st.session_state.drill_path = st.session_state.drill_path[:level]
+        break
 
-        level = 1
-        current_parent_ids = [selected_root_node["id"]]
+    if len(st.session_state.drill_path) > level:
+        st.session_state.drill_path[level] = selected_value
+        st.session_state.drill_path = st.session_state.drill_path[: level + 1]
+    else:
+        st.session_state.drill_path.append(selected_value)
 
-        while True:
-            next_options = get_children_for_many(current_parent_ids)
-            if not next_options:
-                break
+    selected_node = get_node_by_value(nodes, selected_value)
+    if selected_node is None:
+        break
 
-            next_labels = [item["value"] for item in next_options]
-            selected_value = st.selectbox(
-                "",
-                options=next_labels,
-                index=None,
-                placeholder="Select next item",
-                key=f"level_{level}",
-            )
+    child_nodes = get_children(selected_node["id"])
+    if not child_nodes:
+        break
 
-            if not selected_value:
-                break
-
-            selected_nodes = [
-                item for item in next_options if item["value"] == selected_value
-            ]
-            selected_ids = [item["id"] for item in selected_nodes]
-
-            if not selected_ids:
-                break
-
-            st.session_state.selected_path = st.session_state.selected_path[:level] + [
-                selected_ids[0]
-            ]
-            current_parent_ids = selected_ids
-            level += 1
+    level += 1
+    nodes = child_nodes
 
 # --- BUTTON 1: count nodes ---
 if st.button("Count Nodes"):
