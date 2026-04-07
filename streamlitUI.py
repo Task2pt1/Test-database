@@ -12,21 +12,8 @@ def run_query(q, params=None):
 
 st.title("AIF Graph Viewer 2")
 
-from neo4j import GraphDatabase
-import streamlit as st
 
-uri = st.secrets["NEO4J_URI"]
-user = st.secrets["NEO4J_USERNAME"]
-password = st.secrets["NEO4J_PASSWORD"]
-driver = GraphDatabase.driver(uri, auth=(user, password))
-
-
-def run_query(query, params=None):
-    with driver.session() as session:
-        return [r.data() for r in session.run(query, params or {})]
-
-
-def clean_text(value):
+def clean_text(value) -> str | None:
     if value is None:
         return None
     text = str(value).strip()
@@ -35,15 +22,18 @@ def clean_text(value):
     return text
 
 
-def get_top_levels():
-    rows = run_query("""
+def get_root_options() -> list[dict]:
+    rows = run_query(
+        """
         MATCH (n:String)
         WHERE n.value IS NOT NULL
           AND trim(n.value) <> ""
-          AND NOT (()-[:HAS_CHILD]->(n))
+          AND toLower(trim(n.value)) <> "null"
+          AND NOT ()-[:HAS_CHILD]->(n)
         RETURN elementId(n) AS id, n.value AS value
-        ORDER BY value
-    """)
+        ORDER BY n.value
+        """
+    )
     return [
         {"id": row["id"], "value": clean_text(row["value"])}
         for row in rows
@@ -51,18 +41,19 @@ def get_top_levels():
     ]
 
 
-def get_children_of_node(node_id):
-    if not node_id:
-        return []
-
-    rows = run_query("""
+def get_children(node_id: str) -> list[dict]:
+    rows = run_query(
+        """
         MATCH (p:String)-[:HAS_CHILD]->(c:String)
         WHERE elementId(p) = $node_id
           AND c.value IS NOT NULL
           AND trim(c.value) <> ""
+          AND toLower(trim(c.value)) <> "null"
         RETURN elementId(c) AS id, c.value AS value
-        ORDER BY value
-    """, {"node_id": node_id})
+        ORDER BY c.value
+        """,
+        {"node_id": node_id},
+    )
     return [
         {"id": row["id"], "value": clean_text(row["value"])}
         for row in rows
@@ -70,71 +61,87 @@ def get_children_of_node(node_id):
     ]
 
 
-def get_children_of_checked_nodes(node_ids):
+def get_children_for_many(node_ids: list[str]) -> list[dict]:
     if not node_ids:
         return []
 
-    rows = run_query("""
+    rows = run_query(
+        """
         MATCH (p:String)-[:HAS_CHILD]->(c:String)
         WHERE elementId(p) IN $node_ids
           AND c.value IS NOT NULL
           AND trim(c.value) <> ""
-        RETURN DISTINCT c.value AS value
-        ORDER BY value
-    """, {"node_ids": node_ids})
-    values = []
-    seen = set()
-    for row in rows:
-        value = clean_text(row.get("value"))
-        if value and value not in seen:
-            seen.add(value)
-            values.append(value)
-    return values
+          AND toLower(trim(c.value)) <> "null"
+        RETURN DISTINCT elementId(c) AS id, c.value AS value
+        ORDER BY c.value
+        """,
+        {"node_ids": node_ids},
+    )
+    return [
+        {"id": row["id"], "value": clean_text(row["value"])}
+        for row in rows
+        if clean_text(row.get("value"))
+    ]
 
-top_nodes = get_top_levels()
-top_labels = [node["value"] for node in top_nodes]
 
-selected_top_label = st.selectbox(
-    "Top Level",
-    top_labels,
+st.set_page_config(page_title="AIF Graph Viewer", layout="wide")
+
+if "selected_path" not in st.session_state:
+    st.session_state.selected_path = []
+
+root_options = get_root_options()
+root_labels = [item["value"] for item in root_options]
+
+selected_root = st.selectbox(
+    "",
+    options=root_labels,
     index=None,
-    placeholder="Select a top-level category",
+    placeholder="Select first item",
+    key="level_0",
 )
 
-selected_top_id = next(
-    (node["id"] for node in top_nodes if node["value"] == selected_top_label),
-    None,
-)
+if selected_root:
+    selected_root_node = next(
+        (item for item in root_options if item["value"] == selected_root),
+        None,
+    )
 
-child_nodes = get_children_of_node(selected_top_id)
-child_labels = [node["value"] for node in child_nodes]
+    if selected_root_node:
+        st.session_state.selected_path = [selected_root_node["id"]]
 
-checked_child_labels = st.multiselect(
-    "Check boxes",
-    child_labels,
-    key="checked_children",
-)
+        level = 1
+        current_parent_ids = [selected_root_node["id"]]
 
-checked_child_ids = [
-    node["id"]
-    for node in child_nodes
-    if node["value"] in checked_child_labels
-]
+        while True:
+            next_options = get_children_for_many(current_parent_ids)
+            if not next_options:
+                break
 
-next_dropdown_options = get_children_of_checked_nodes(checked_child_ids)
+            next_labels = [item["value"] for item in next_options]
+            selected_value = st.selectbox(
+                "",
+                options=next_labels,
+                index=None,
+                placeholder="Select next item",
+                key=f"level_{level}",
+            )
 
-selected_next = st.selectbox(
-    "Next dropdown",
-    next_dropdown_options,
-    index=None,
-    placeholder="Select next level",
-)
+            if not selected_value:
+                break
 
-st.write("Selected node:", selected_top_label)
-st.write("Children of selected node:", child_labels)
-st.write("Checked child nodes:", checked_child_labels)
-st.write("Next-level options from checked child nodes only:", next_dropdown_options)
+            selected_nodes = [
+                item for item in next_options if item["value"] == selected_value
+            ]
+            selected_ids = [item["id"] for item in selected_nodes]
 
+            if not selected_ids:
+                break
+
+            st.session_state.selected_path = st.session_state.selected_path[:level] + [
+                selected_ids[0]
+            ]
+            current_parent_ids = selected_ids
+            level += 1
 
 # --- BUTTON 1: count nodes ---
 if st.button("Count Nodes"):
