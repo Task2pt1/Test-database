@@ -13,119 +13,102 @@ st.set_page_config(page_title="AIF Graph Viewer 2", layout="wide")
 st.title("AIF Graph Viewer 2")
 
 
-def run_query(query: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+def run_query(query: str, params: dict[str, Any] | None = None):
     with driver.session() as session:
-        return [record.data() for record in session.run(query, params or {})]
+        return [r.data() for r in session.run(query, params or {})]
 
 
-def clean_text(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text or text.lower() == "null":
-        return None
-    return text
+# ----------------------------
+# ROOT + CHILDREN (STRUCTURE)
+# ----------------------------
 
-
-def normalize_nodes(rows: list[dict[str, Any]]) -> list[dict[str, str]]:
-    items: list[dict[str, str]] = []
-    for row in rows:
-        node_id = row.get("id")
-        value = clean_text(row.get("value"))
-        if node_id and value:
-            items.append({"id": str(node_id), "value": value})
-    return items
-
-
-def get_root_nodes() -> list[dict[str, str]]:
-    rows = run_query(
-        """
+def get_root_nodes():
+    return run_query("""
         MATCH (n:String)
         WHERE NOT ()-[:HAS_CHILD]->(n)
-          AND n.value IS NOT NULL
-          AND trim(n.value) <> ""
-          AND toLower(trim(n.value)) <> "null"
-        RETURN elementId(n) AS id, n.value AS value
-        ORDER BY n.value, elementId(n)
-        """
-    )
-    return normalize_nodes(rows)
+        RETURN elementId(n) AS id, n.value AS label
+        ORDER BY label
+    """)
 
 
-def get_children(parent_id: str) -> list[dict[str, str]]:
-    rows = run_query(
-        """
-        MATCH (p:String)-[:HAS_CHILD]->(c:String)
-        WHERE elementId(p) = $parent_id
-          AND c.value IS NOT NULL
-          AND trim(c.value) <> ""
-          AND toLower(trim(c.value)) <> "null"
-        RETURN elementId(c) AS id, c.value AS value
-        ORDER BY c.value, elementId(c)
-        """,
-        {"parent_id": parent_id},
-    )
-    return normalize_nodes(rows)
+def get_children(node_id: str):
+    return run_query("""
+        MATCH (n:String)-[:HAS_CHILD]->(c:String)
+        WHERE elementId(n) = $id
+        RETURN elementId(c) AS id, c.value AS label
+        ORDER BY label
+    """, {"id": node_id})
 
 
-def get_full_node_payload(node_id: str) -> dict:
-    props = run_query(
-        """
+# ----------------------------
+# NODE VALUES (NOT STRUCTURE)
+# ----------------------------
+
+def get_node_values(node_id: str):
+    # properties
+    props = run_query("""
         MATCH (n)
-        WHERE elementId(n) = $node_id
+        WHERE elementId(n) = $id
         RETURN properties(n) AS props
-        """,
-        {"node_id": node_id},
-    )
+    """, {"id": node_id})
 
-    rels = run_query(
-        """
+    props = props[0]["props"] if props else {}
+
+    # detail nodes
+    details = run_query("""
         MATCH (n)-[r]->(m)
-        WHERE elementId(n) = $node_id
+        WHERE elementId(n) = $id
+          AND type(r) <> 'HAS_CHILD'
         RETURN
             type(r) AS rel,
-            elementId(m) AS id,
-            labels(m) AS labels,
+            m.name AS name,
+            m.value AS value,
             properties(m) AS props
-        ORDER BY rel
-        """,
-        {"node_id": node_id},
-    )
+    """, {"id": node_id})
 
-    return {
-        "properties": props[0]["props"] if props else {},
-        "relationships": rels
-    }
+    clean_details = []
+
+    for d in details:
+        label = d.get("name") or d.get("value") or d["rel"]
+        clean_details.append({
+            "label": label,
+            "data": d.get("props", {})
+        })
+
+    return props, clean_details
 
 
-def render_dropdown(level: int, nodes: list[dict[str, str]]) -> str | None:
-    option_ids = [node["id"] for node in nodes]
-    labels = {node["id"]: node["value"] for node in nodes}
+# ----------------------------
+# DROPDOWN RENDER
+# ----------------------------
 
-    saved_id = (
-        st.session_state.path_ids[level]
-        if level < len(st.session_state.path_ids)
-        else None
-    )
+def render_dropdown(label, options, key):
+    if not options:
+        return None
 
-    if saved_id not in option_ids:
-        saved_id = None
-
-    index = option_ids.index(saved_id) if saved_id is not None else None
+    ids = [o["id"] for o in options]
+    labels = {o["id"]: o["label"] for o in options}
 
     return st.selectbox(
-        f"Level {level + 1}",
-        options=option_ids,
-        index=index,
-        placeholder="Select",
-        key=f"path_{level}",
-        format_func=lambda node_id: labels[node_id],
+        label,
+        options=ids,
+        index=None,
+        key=key,
+        format_func=lambda x: labels[x]
     )
 
 
-# session state
-if "path_ids" not in st.session_state:
-    st.session_state.path_ids = []
+# ----------------------------
+# SESSION STATE
+# ----------------------------
+
+if "path" not in st.session_state:
+    st.session_state.path = []
+
+
+# ----------------------------
+# MAIN LOOP
+# ----------------------------
 
 st.subheader("Browse Hierarchy")
 
@@ -133,61 +116,55 @@ level = 0
 nodes = get_root_nodes()
 
 while True:
-    if not nodes:
-        st.session_state.path_ids = st.session_state.path_ids[:level]
-        break
 
-    selected_id = render_dropdown(level, nodes)
+    selected = render_dropdown(f"Level {level+1}", nodes, f"level_{level}")
 
-    if selected_id is None:
-        st.session_state.path_ids = st.session_state.path_ids[:level]
+    if selected is None:
         break
 
     # store path
-    if len(st.session_state.path_ids) > level:
-        st.session_state.path_ids[level] = selected_id
+    if len(st.session_state.path) > level:
+        st.session_state.path[level] = selected
     else:
-        st.session_state.path_ids.append(selected_id)
+        st.session_state.path.append(selected)
 
-    st.session_state.path_ids = st.session_state.path_ids[: level + 1]
+    st.session_state.path = st.session_state.path[:level+1]
 
-    # SHOW EVERYTHING FOR THIS NODE
-    st.markdown(f"### Level {level + 1} Data")
+    # ----------------------------
+    # NODE VALUES DROPDOWN
+    # ----------------------------
 
-    payload = get_full_node_payload(selected_id)
+    props, details = get_node_values(selected)
 
-    col1, col2 = st.columns(2)
+    st.markdown(f"### Level {level+1} Values")
 
-    with col1:
-        st.markdown("**Properties**")
-        st.json(payload["properties"])
+    value_options = []
 
-    with col2:
-        st.markdown("**Relationships / Specs**")
-        st.json(payload["relationships"])
+    # add properties as options
+    for k, v in props.items():
+        value_options.append({
+            "label": k,
+            "data": v
+        })
 
-    # continue ONLY along selected path
-    nodes = get_children(selected_id)
-    level += 1
+    # add detail nodes
+    value_options.extend(details)
 
-
-st.subheader("Database Controls")
-
-colA, colB = st.columns(2)
-
-with colA:
-    if st.button("Count Nodes"):
-        total = run_query("MATCH (n) RETURN count(n) AS total")
-        st.write(total)
-
-with colB:
-    if st.button("Show Full Database"):
-        data = run_query(
-            """
-            MATCH (n)
-            OPTIONAL MATCH (n)-[r]->(m)
-            RETURN n, r, m
-            LIMIT 500
-            """
+    if value_options:
+        selected_value = st.selectbox(
+            f"Select value for Level {level+1}",
+            options=range(len(value_options)),
+            index=None,
+            key=f"value_{level}",
+            format_func=lambda i: value_options[i]["label"]
         )
-        st.write(data)
+
+        if selected_value is not None:
+            st.json(value_options[selected_value]["data"])
+
+    # ----------------------------
+    # NEXT LEVEL (ONLY CHILDREN)
+    # ----------------------------
+
+    nodes = get_children(selected)
+    level += 1
