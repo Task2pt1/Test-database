@@ -38,79 +38,84 @@ def get_children(node_id: str):
         ORDER BY label
     """, {"id": node_id})
 
-def get_node_values(node_id: str):
-    props = run_query("""
-        MATCH (n)
-        WHERE elementId(n) = $id
-        RETURN properties(n) AS props
-    """, {"id": node_id})
-    props = props[0]["props"] if props else {}
-
-    details = run_query("""
-        MATCH (n)-[r]->(m)
-        WHERE elementId(n) = $id
-          AND type(r) <> 'HAS_CHILD'
-        RETURN
-            type(r) AS rel,
-            m.name AS name,
-            m.value AS value,
-            properties(m) AS props
-    """, {"id": node_id})
-
-    clean_details = []
-    for d in details:
-        label = d.get("name") or d.get("value") or d["rel"]
-        clean_details.append({
-            "label": label,
-            "data": d.get("props", {})
-        })
-    return props, clean_details
 
 # ----------------------------
 # DRILL-DOWN PATH
 # ----------------------------
+def get_node_data(node_id: str):
+    return run_query("""
+        MATCH (n)
+        WHERE elementId(n) = $id
+        OPTIONAL MATCH (n)-[r]-(m)
+        RETURN
+            labels(n) AS labels,
+            properties(n) AS properties,
+            type(r) AS relationship,
+            labels(m) AS neighbor_labels,
+            properties(m) AS neighbor_properties,
+            startNode(r) = n AS outgoing
+        ORDER BY relationship
+    """, {"id": node_id})
 
-st.subheader("Browse Hierarchy")
+st.subheader("Browse materials")
 
-if "path" not in st.session_state:
-    st.session_state.path = []
+if "path_ids" not in st.session_state:
+    st.session_state.path_ids = []
 
-col1, _ = st.columns([1, 4])
-with col1:
-    if st.button("Start over"):
-        st.session_state.path = []
-        st.rerun()
+level = 0
+labels = {}
+while True:
+    options = get_root_nodes() if level == 0 else get_children(st.session_state.path_ids[level - 1])
+    if not options:
+        break
 
-if st.session_state.path:
-    st.caption(" → ".join(p["label"] for p in st.session_state.path))
-
-if not st.session_state.path:
-    options = get_root_nodes()
-    box_label = "Choose a main category"
-else:
-    parent_id = st.session_state.path[-1]["id"]
-    options = get_children(parent_id)
-    box_label = f"Choose under {st.session_state.path[-1]['label']}"
-
-if not options:
-    st.info("No more levels below this node.")
-else:
     ids = [o["id"] for o in options]
     labels = {o["id"]: o["label"] for o in options}
+
+    current = st.session_state.path_ids[level] if level < len(st.session_state.path_ids) else None
+    if current not in ids:
+        current = ids[0]
+
     picked = st.selectbox(
-        box_label,
-        options=[None] + ids,
-        format_func=lambda x: "— select —" if x is None else labels[x],
-        key=f"level_{len(st.session_state.path)}",
+        f"Level {level + 1}",
+        options=ids,
+        index=ids.index(current),
+        key=f"level_{level}",
+        format_func=lambda x: labels[x],
     )
-    if picked is not None:
-        st.session_state.path.append({"id": picked, "label": labels[picked]})
+
+    if level >= len(st.session_state.path_ids):
+        st.session_state.path_ids.append(picked)
+    elif st.session_state.path_ids[level] != picked:
+        st.session_state.path_ids = st.session_state.path_ids[:level] + [picked]
         st.rerun()
 
-if st.session_state.path:
-    current = st.session_state.path[-1]
-    props, details = get_node_values(current["id"])
-    st.markdown(f"### {current['label']}")
-    st.json(props)
-    if details:
-        st.dataframe(details)
+    level += 1
+
+st.session_state.path_ids = st.session_state.path_ids[:level]
+
+if st.session_state.path_ids:
+    node_id = st.session_state.path_ids[-1]
+    st.markdown(f"### {labels.get(node_id, 'Selected')}")
+
+    rows = get_node_data(node_id)
+    if rows:
+        st.write("**Labels:**", rows[0]["labels"])
+        st.write("**Properties:**")
+        st.json(rows[0]["properties"] or {})
+
+        links = [r for r in rows if r.get("relationship")]
+        if links:
+            st.write("**Connections:**")
+            st.dataframe(
+                [
+                    {
+                        "relationship": r["relationship"],
+                        "outgoing": r["outgoing"],
+                        "neighbor_labels": r["neighbor_labels"],
+                        "neighbor": r["neighbor_properties"],
+                    }
+                    for r in links
+                ],
+                use_container_width=True,
+            )
