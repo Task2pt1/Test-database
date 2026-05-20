@@ -60,113 +60,48 @@ def get_node_data(node_id: str):
 # ----------------------------
 # INTERFACE
 # ----------------------------
-def has_children(node_id: str) -> bool:
-    r = run_query("""
-        MATCH (n:String)-[:HAS_CHILD]->(:String)
-        WHERE elementId(n) = $id
-        RETURN count(*) > 0 AS yes
-    """, {"id": node_id})
-    return bool(r and r[0]["yes"])
-
-def fetch_record(node_id: str) -> dict:
-    """One row from the DB for the selected node."""
-    r = run_query("""
-        MATCH (n:String)
-        WHERE elementId(n) = $id
-        RETURN n.value AS name, properties(n) AS props
-    """, {"id": node_id})
-    if not r:
-        return {}
-    name = r[0]["name"]
-    props = r[0]["props"] or {}
-    return {"name": name, "props": props}
-
-def show_record(rec: dict, is_category: bool):
-    name = rec.get("name", "")
-    props = rec.get("props", {})
-
-    st.markdown(f"## {name}")
-
-    if is_category:
-        st.write("Category — choose a subcategory below for full material data.")
-        if props.get("synonyms"):
-            st.write("**Synonyms:**", ", ".join(props["synonyms"]))
-        return
-
-    # --- material / process record (what EC3-style tools show) ---
-    if props.get("region"):
-        st.write("**Region:**", props["region"])
-    if props.get("notes"):
-        st.write("**Notes:**", props["notes"])
-    if props.get("citation"):
-        for c in props["citation"]:
-            st.write(c)
-    if props.get("synonyms"):
-        st.write("**Synonyms:**", ", ".join(props["synonyms"]))
-    if props.get("engineering"):
-        st.write("**Engineering:**", props["engineering"])
-
-    activity = props.get("activity")
-    if isinstance(activity, dict):
-        if activity.get("comment"):
-            st.write("**Process:**", activity["comment"])
-        ex = activity.get("exchanges") or {}
-        if ex.get("technosphere"):
-            st.markdown("**Inputs (technosphere)**")
-            st.dataframe(ex["technosphere"], use_container_width=True)
-        if ex.get("biosphere"):
-            st.markdown("**Emissions (biosphere)**")
-            st.dataframe(ex["biosphere"], use_container_width=True)
-
-    # anything else stored on the node
-    shown = {"region", "notes", "citation", "synonyms", "engineering", "activity"}
-    extra = {k: v for k, v in props.items() if k not in shown}
-    if extra:
-        with st.expander("Other properties from database"):
-            st.json(extra)
-
-# -------- browse path (change any level; lower levels reset) --------
-
 st.subheader("Browse materials")
 
 if "path_ids" not in st.session_state:
     st.session_state.path_ids = []
 
 level = 0
-name_by_id = {}
-while True:
+while level <= len(st.session_state.path_ids):
     options = get_root_nodes() if level == 0 else get_children(st.session_state.path_ids[level - 1])
     if not options:
         break
 
     ids = [o["id"] for o in options]
-    name_by_id = {o["id"]: o["label"] for o in options}
+    labels = {o["id"]: o["label"] for o in options}
 
-    current = st.session_state.path_ids[level] if level < len(st.session_state.path_ids) else ids[0]
-    if current not in ids:
-        current = ids[0]
-
-    picked = st.selectbox(
-        f"Level {level + 1}",
-        options=ids,
-        index=ids.index(current),
-        key=f"level_{level}",
-        format_func=lambda x: name_by_id[x],
-    )
-
-    if level >= len(st.session_state.path_ids):
+    if level < len(st.session_state.path_ids):
+        current = st.session_state.path_ids[level]
+        picked = st.selectbox(
+            f"Level {level + 1}",
+            options=ids,
+            index=ids.index(current),
+            key=f"level_{level}",
+            format_func=lambda x: labels[x],
+        )
+        if picked != current:
+            st.session_state.path_ids = st.session_state.path_ids[:level] + [picked]
+            st.rerun()
+    else:
+        picked = st.selectbox(
+            f"Level {level + 1}",
+            options=[None] + ids,
+            index=0,
+            key=f"level_{level}",
+            format_func=lambda x: "— select —" if x is None else labels[x],
+        )
+        if picked is None:
+            break
         st.session_state.path_ids.append(picked)
-    elif st.session_state.path_ids[level] != picked:
-        st.session_state.path_ids = st.session_state.path_ids[:level] + [picked]
         st.rerun()
+
     level += 1
-
-st.session_state.path_ids = st.session_state.path_ids[:level]
-
-if st.session_state.path:
-    st.caption(" → ".join(name_by_id.get(i, "?") for i in st.session_state.path_ids))
 
 if st.session_state.path_ids:
     node_id = st.session_state.path_ids[-1]
-    rec = fetch_record(node_id)
-    show_record(rec, is_category=has_children(node_id))
+    st.caption(" → ".join(fetch_record(nid)["name"] for nid in st.session_state.path_ids))
+    show_record(fetch_record(node_id), is_category=has_children(node_id))
