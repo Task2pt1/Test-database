@@ -145,29 +145,37 @@ def get_breadcrumb_labels(path_ids: list[str]) -> list[str]:
 
 def get_subtree_with_measurements(root_id: str) -> list[dict[str, Any]]:
     query = f"""
-    MATCH p = (root)-[:{CHILD_REL}*0..]->(n)
+    MATCH p = (root)-[:{CHILD_REL}*0..]->(n:{NODE_LABEL})
     WHERE elementId(root) = $root_id
-    WITH n, p, length(p) AS depth,
-         [x IN nodes(p) | coalesce(x.value, x.name, x.label, elementId(x))] AS path_labels
+
+    WITH n, p, length(p) AS depth
+    ORDER BY elementId(n), depth ASC
+
+    WITH
+      n,
+      min(depth) AS min_depth,
+      head(collect(p)) AS chosen_path
+
     OPTIONAL MATCH (n)-[:{MEASUREMENT_REL}]->(m)
+
     RETURN
-        elementId(n) AS node_id,
-        coalesce(n.value, n.name, n.label, elementId(n)) AS node_label,
-        labels(n) AS node_labels,
-        properties(n) AS node_props,
-        depth,
-        path_labels,
-        collect(
-            DISTINCT CASE
-                WHEN m IS NULL THEN NULL
-                ELSE {{
-                    measurement_id: elementId(m),
-                    measurement_labels: labels(m),
-                    measurement_props: properties(m)
-                }}
-            END
-        ) AS measurements
-    ORDER BY depth, node_label
+      elementId(n) AS node_id,
+      coalesce(n.value, n.name, n.label, elementId(n)) AS node_label,
+      labels(n) AS node_labels,
+      properties(n) AS node_props,
+      min_depth AS depth,
+      [x IN nodes(chosen_path) | coalesce(x.value, x.name, x.label, elementId(x))] AS path_labels,
+      collect(
+        DISTINCT CASE
+          WHEN m IS NULL THEN NULL
+          ELSE {{
+            measurement_id: elementId(m),
+            measurement_labels: labels(m),
+            measurement_props: properties(m)
+          }}
+        END
+      ) AS measurements
+    ORDER BY depth, node_label, node_id
     """
     return run_query(query, {"root_id": root_id})
 
