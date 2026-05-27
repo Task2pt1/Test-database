@@ -1,25 +1,36 @@
-# app.py — Material Ontology Explorer (view + bill of materials, no export)
+# streamlitUI.py — Material Ontology Explorer (view + BOM by category, no export)
 
 from __future__ import annotations
-
 from typing import Any
-
 import pandas as pd
 import streamlit as st
-from neo4j import GraphDatabase, Driver
+from neo4j import Driver, GraphDatabase
 
 st.set_page_config(page_title="Material Ontology Explorer", layout="wide")
 
 ATTRIBUTE_TEMPLATE_KEYS = (
-    "name", "id", "code", "database", "placement", "vector",
-    "synonyms", "comment", "citation", "standards", "region",
-    "engineering", "activity", "lcia", "material_cost", "notes",
-)
+    "name",
+    "id",
+    "code",
+    "database",
+    "placement",
+    "vector",
+    "synonyms",
+    "comment",
+    "citation",
+    "standards",
+    "region",
+    "engineering",
+    "activity",
+    "lcia",
+    "material_cost",
+    "notes")
 NODE_LABEL = "Material"
 CHILD_REL = "HAS_CHILD"
 
 UI_ATTRS = [
-    k for k in ATTRIBUTE_TEMPLATE_KEYS
+    k
+    for k in ATTRIBUTE_TEMPLATE_KEYS
     if k not in ("name", "id", "code", "database", "vector", "placement")
 ]
 
@@ -30,63 +41,88 @@ def get_driver() -> Driver:
         auth=(st.secrets["NEO4J_USERNAME"], st.secrets["NEO4J_PASSWORD"]),
     )
 
-driver = _driver()
+driver = get_driver()
+
 
 def run_query(query: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     with driver.session() as session:
         return [r.data() for r in session.run(query, params or {})]
 
-def _root_nodes() -> list[dict[str, str]]:
-    return run_query(f"""
+
+def get_root_nodes() -> list[dict[str, str]]:
+    return run_query(
+        f"""
         MATCH (n:{NODE_LABEL})
         WHERE NOT ()-[:{CHILD_REL}]->(n)
         RETURN n.id AS id, n.name AS label
         ORDER BY label
-    """)
+        """
+    )
 
-def _node_summary(material_id: str) -> dict[str, Any] | None:
-    rows = run_query(f"""
+
+def get_node_summary(material_id: str) -> dict[str, Any] | None:
+    rows = run_query(
+        f"""
         MATCH (n:{NODE_LABEL} {{id: $id}})
         RETURN n.id AS id, n.name AS label, properties(n) AS props
-    """, {"id": material_id})
+        """,
+        {"id": material_id},
+    )
     return rows[0] if rows else None
 
-def _children(material_id: str) -> list[dict[str, str]]:
-    return run_query(f"""
+
+def get_children(material_id: str) -> list[dict[str, str]]:
+    return run_query(
+        f"""
         MATCH (:{NODE_LABEL} {{id: $id}})-[:{CHILD_REL}]->(c:{NODE_LABEL})
         RETURN c.id AS id, c.name AS label
         ORDER BY label
-    """, {"id": material_id})
+        """,
+        {"id": material_id},
+    )
 
-def _breadcrumb_labels(path_ids: list[str]) -> list[str]:
+
+def get_breadcrumb_labels(path_ids: list[str]) -> list[str]:
     if not path_ids:
         return []
-    rows = run_query("""
+    rows = run_query(
+        """
         UNWIND $ids AS id
         MATCH (n:Material {id: id})
         RETURN id, n.name AS label
-    """, {"ids": path_ids})
-    m = {r["id"]: r["label"] for r in rows}
-    return [m.get(i, i) for i in path_ids]
+        """,
+        {"ids": path_ids},
+    )
+    label_map = {r["id"]: r["label"] for r in rows}
+    return [label_map.get(i, i) for i in path_ids]
+
 
 def get_descendants(root_id: str) -> list[dict[str, Any]]:
-    return run_query(f"""
-        MATCH p = (root:{NODE_LABEL})-[:{CHILD_REL}*1..]->(n:{NODE_LABEL})
+    return run_query(
+        f"""
+        MATCH (root:{NODE_LABEL})-[:{CHILD_REL}*1..]->(n:{NODE_LABEL})
         WHERE root.id = $root_id
         RETURN n.id AS id, n.name AS label, properties(n) AS props
         ORDER BY label
-    """, {"root_id": root_id})
+        """,
+        {"root_id": root_id},
+    )
+
 
 def get_ontology_category(material_id: str) -> str:
-    rows = run_query("""
+    rows = run_query(
+        """
         MATCH (m:Material {id: $id})
         OPTIONAL MATCH (root:Material)-[:HAS_CHILD*]->(m)
         WHERE NOT ()-[:HAS_CHILD]->(root)
-        WITH m, head(collect(root)) AS root
-        RETURN coalesce(root.name, m.name) AS category
-    """, {"id": material_id})
+        WITH m, head(collect(root)) AS r
+        RETURN coalesce(r.name, m.name) AS category
+        """,
+        {"id": material_id},
+    )
     return rows[0]["category"] if rows else "Unknown"
-    
+
+
 def attrs_for_props(props: dict[str, Any]) -> dict[str, Any]:
     return {
         k: props[k]
@@ -94,11 +130,12 @@ def attrs_for_props(props: dict[str, Any]) -> dict[str, Any]:
         if props.get(k) not in (None, "", [], {})
     }
 
+
 if "path_ids" not in st.session_state:
     st.session_state.path_ids = []
 
 if "bom" not in st.session_state:
-    st.session_state.bom = {} 
+    st.session_state.bom = {}
 
 st.title("Material Ontology Explorer")
 
@@ -201,10 +238,7 @@ with col2:
 
     if scope == "Children here":
         items = get_children(current_id)
-        table_rows = [
-            {"bill": False, "name": x["label"], "_id": x["id"]}
-            for x in items
-        ]
+        table_rows = [{"bill": False, "name": x["label"], "_id": x["id"]} for x in items]
     else:
         items = get_descendants(st.session_state.path_ids[0])
         table_rows = [
@@ -221,14 +255,11 @@ with col2:
         st.caption("Nothing to pick at this level.")
     else:
         df = pd.DataFrame(table_rows)
+        drop_id = df.drop(columns=["_id"], errors="ignore")
         edited = st.data_editor(
-            df.drop(columns=["_id"], errors="ignore"),
+            drop_id,
             column_config={"bill": st.column_config.CheckboxColumn("Bill")},
-            disabled=[
-                col
-                for col in df.drop(columns=["_id"], errors="ignore").columns
-                if col != "bill"
-            ],
+            disabled=[c for c in drop_id.columns if c != "bill"],
             hide_index=True,
             use_container_width=True,
             key="pick_editor",
