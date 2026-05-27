@@ -1,4 +1,4 @@
-# app.py — Material Ontology Explorer (view only, no export)
+# app.py — Material Ontology Explorer (view + bill of materials, no export)
 
 from __future__ import annotations
 
@@ -8,14 +8,8 @@ import pandas as pd
 import streamlit as st
 from neo4j import GraphDatabase, Driver
 
-# =============================================================================
-# PAGE
-# =============================================================================
 st.set_page_config(page_title="Material Ontology Explorer", layout="wide")
 
-# =============================================================================
-# CONFIG (lines ~15–25)
-# =============================================================================
 ATTRIBUTE_TEMPLATE_KEYS = (
     "name", "id", "code", "database", "placement", "vector",
     "synonyms", "comment", "citation", "standards", "region",
@@ -24,15 +18,11 @@ ATTRIBUTE_TEMPLATE_KEYS = (
 NODE_LABEL = "Material"
 CHILD_REL = "HAS_CHILD"
 
-# Attributes hidden from UI tables (identity / technical)
 UI_ATTRS = [
     k for k in ATTRIBUTE_TEMPLATE_KEYS
     if k not in ("name", "id", "code", "database", "vector", "placement")
 ]
 
-# =============================================================================
-# NEO4J CONNECTION (lines ~35–45)
-# =============================================================================
 @st.cache_resource
 def get_driver() -> Driver:
     return GraphDatabase.driver(
@@ -46,9 +36,6 @@ def run_query(query: str, params: dict[str, Any] | None = None) -> list[dict[str
     with driver.session() as session:
         return [r.data() for r in session.run(query, params or {})]
 
-# =============================================================================
-# CYPHER QUERIES (lines ~50–95)
-# =============================================================================
 def get_root_nodes() -> list[dict[str, str]]:
     return run_query(f"""
         MATCH (n:{NODE_LABEL})
@@ -82,57 +69,29 @@ def get_breadcrumb_labels(path_ids: list[str]) -> list[str]:
     m = {r["id"]: r["label"] for r in rows}
     return [m.get(i, i) for i in path_ids]
 
-def get_subtree(root_id: str) -> list[dict[str, Any]]:
+def get_descendants(root_id: str) -> list[dict[str, Any]]:
     return run_query(f"""
-        MATCH p = (root:{NODE_LABEL})-[:{CHILD_REL}*0..]->(n:{NODE_LABEL})
+        MATCH p = (root:{NODE_LABEL})-[:{CHILD_REL}*1..]->(n:{NODE_LABEL})
         WHERE root.id = $root_id
-        WITH n, min(length(p)) AS depth, head(collect(p)) AS chosen_path
-        RETURN
-          n.name AS node_label,
-          properties(n) AS node_props,
-          depth,
-          [x IN nodes(chosen_path) | x.name] AS path_labels
-        ORDER BY depth, node_label
+        RETURN n.id AS id, n.name AS label, properties(n) AS props
+        ORDER BY label
     """, {"root_id": root_id})
 
-# =============================================================================
-# HELPERS (lines ~100–130)
-# =============================================================================
-def safe_join_path(parts: list[str]) -> str:
-    return " → ".join(p for p in parts if p)
+def attrs_for_props(props: dict[str, Any]) -> dict[str, Any]:
+    return {
+        k: props[k]
+        for k in UI_ATTRS
+        if props.get(k) not in (None, "", [], {})
+    }
 
-def build_subtree_table(subtree_rows: list[dict[str, Any]]) -> pd.DataFrame:
-    rows = []
-    for row in subtree_rows:
-        props = row["node_props"] or {}
-        rec = {
-            "name": row["node_label"],
-            "depth": row["depth"],
-            "path": safe_join_path(row["path_labels"] or []),
-        }
-        for k in UI_ATTRS:
-            if props.get(k) not in (None, "", [], {}):
-                rec[k] = props[k]
-        rows.append(rec)
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        df = df.sort_values(["depth", "path", "name"], kind="stable").reset_index(drop=True)
-    return df
-
-# =============================================================================
-# SESSION STATE (lines ~135–140)
-# =============================================================================
 if "path_ids" not in st.session_state:
     st.session_state.path_ids = []
 
-# =============================================================================
-# TITLE (line ~145)
-# =============================================================================
+if "bom" not in st.session_state:
+    st.session_state.bom = []
+
 st.title("Material Ontology Explorer")
 
-# =============================================================================
-# SIDEBAR — navigation (lines ~150–210)
-# =============================================================================
 with st.sidebar:
     st.header("Navigation")
 
@@ -178,18 +137,23 @@ with st.sidebar:
             level += 1
 
     if st.session_state.path_ids:
-        st.caption(safe_join_path(get_breadcrumb_labels(st.session_state.path_ids)))
+        st.caption(" → ".join(get_breadcrumb_labels(st.session_state.path_ids)))
 
-# =============================================================================
-# STOP if nothing selected (lines ~215–220)
-# =============================================================================
+    st.divider()
+    st.subheader("Bill of materials")
+    if not st.session_state.bom:
+        st.caption("Empty.")
+    else:
+        for i, item in enumerate(st.session_state.bom, 1):
+            st.write(f"{i}. {item['name']}")
+        if st.button("Clear bill", use_container_width=True):
+            st.session_state.bom = []
+            st.rerun()
+
 if not st.session_state.path_ids:
     st.info("Select a root in the sidebar.")
     st.stop()
 
-# =============================================================================
-# LOAD CURRENT NODE (lines ~225–235)
-# =============================================================================
 current_id = st.session_state.path_ids[-1]
 node = get_node_summary(current_id)
 if not node:
@@ -198,12 +162,8 @@ if not node:
 
 props = node["props"] or {}
 
-# =============================================================================
-# MAIN — two columns (lines ~240–280)
-# =============================================================================
 col1, col2 = st.columns([1.2, 2.0])
 
-# --- LEFT: current material + attributes ---
 with col1:
     st.subheader("Current material")
     st.write(f"**{props.get('name', node['label'])}**")
@@ -219,18 +179,39 @@ with col1:
     else:
         st.caption("No attributes on this node.")
 
-# --- RIGHT: subtree table ---
 with col2:
-    st.subheader("Subtree")
-    scope = st.radio("Show from", ["Current node", "Top-level root"], horizontal=True)
-    root_id = current_id if scope == "Current node" else st.session_state.path_ids[0]
+    st.subheader("Pick materials")
+    scope = st.radio("List", ["Children here", "All under top root"], horizontal=True)
 
-    df = build_subtree_table(get_subtree(root_id))
-    if df.empty:
-        st.warning("No rows in this subtree.")
+    if scope == "Children here":
+        items = get_children(current_id)
+        table_rows = [{"bill": False, "name": x["label"], "_id": x["id"]} for x in items]
     else:
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        items = get_descendants(st.session_state.path_ids[0])
+        table_rows = [
+            {"bill": False, "name": x["label"], "_id": x["id"], **attrs_for_props(x["props"] or {})}
+            for x in items
+        ]
 
-# =============================================================================
-# END OF FILE — no export, no download, nothing below here
-# =============================================================================
+    if not table_rows:
+        st.caption("Nothing to pick at this level.")
+    else:
+        df = pd.DataFrame(table_rows)
+        edited = st.data_editor(
+            df.drop(columns=["_id"]),
+            column_config={"bill": st.column_config.CheckboxColumn("Bill")},
+            disabled=[c for c in df.columns if c != "bill" and c != "_id"],
+            hide_index=True,
+            use_container_width=True,
+            key="pick_editor",
+        )
+
+        if st.button("Add checked to bill"):
+            for i, row in edited.iterrows():
+                if not row.get("bill"):
+                    continue
+                mid = df.loc[i, "_id"]
+                name = row["name"]
+                if not any(b["id"] == mid for b in st.session_state.bom):
+                    st.session_state.bom.append({"id": mid, "name": name})
+            st.rerun()
