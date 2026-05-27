@@ -210,7 +210,7 @@ if not node:
     st.stop()
 
 props = node["props"] or {}
-
+st.json(props)
 col1, col2 = st.columns([1.2, 2.0])
 
 with col1:
