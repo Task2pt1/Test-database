@@ -30,13 +30,13 @@ def get_driver() -> Driver:
         auth=(st.secrets["NEO4J_USERNAME"], st.secrets["NEO4J_PASSWORD"]),
     )
 
-driver = get_driver()
+driver = _driver()
 
 def run_query(query: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     with driver.session() as session:
         return [r.data() for r in session.run(query, params or {})]
 
-def get_root_nodes() -> list[dict[str, str]]:
+def _root_nodes() -> list[dict[str, str]]:
     return run_query(f"""
         MATCH (n:{NODE_LABEL})
         WHERE NOT ()-[:{CHILD_REL}]->(n)
@@ -44,21 +44,21 @@ def get_root_nodes() -> list[dict[str, str]]:
         ORDER BY label
     """)
 
-def get_node_summary(material_id: str) -> dict[str, Any] | None:
+def _node_summary(material_id: str) -> dict[str, Any] | None:
     rows = run_query(f"""
         MATCH (n:{NODE_LABEL} {{id: $id}})
         RETURN n.id AS id, n.name AS label, properties(n) AS props
     """, {"id": material_id})
     return rows[0] if rows else None
 
-def get_children(material_id: str) -> list[dict[str, str]]:
+def _children(material_id: str) -> list[dict[str, str]]:
     return run_query(f"""
         MATCH (:{NODE_LABEL} {{id: $id}})-[:{CHILD_REL}]->(c:{NODE_LABEL})
         RETURN c.id AS id, c.name AS label
         ORDER BY label
     """, {"id": material_id})
 
-def get_breadcrumb_labels(path_ids: list[str]) -> list[str]:
+def _breadcrumb_labels(path_ids: list[str]) -> list[str]:
     if not path_ids:
         return []
     rows = run_query("""
@@ -77,6 +77,16 @@ def get_descendants(root_id: str) -> list[dict[str, Any]]:
         ORDER BY label
     """, {"root_id": root_id})
 
+def get_ontology_category(material_id: str) -> str:
+    rows = run_query("""
+        MATCH (m:Material {id: $id})
+        OPTIONAL MATCH (root:Material)-[:HAS_CHILD*]->(m)
+        WHERE NOT ()-[:HAS_CHILD]->(root)
+        WITH m, head(collect(root)) AS root
+        RETURN coalesce(root.name, m.name) AS category
+    """, {"id": material_id})
+    return rows[0]["category"] if rows else "Unknown"
+    
 def attrs_for_props(props: dict[str, Any]) -> dict[str, Any]:
     return {
         k: props[k]
@@ -88,7 +98,7 @@ if "path_ids" not in st.session_state:
     st.session_state.path_ids = []
 
 if "bom" not in st.session_state:
-    st.session_state.bom = []
+    st.session_state.bom = {} 
 
 st.title("Material Ontology Explorer")
 
@@ -144,11 +154,13 @@ with st.sidebar:
     if not st.session_state.bom:
         st.caption("Empty.")
     else:
-        for i, item in enumerate(st.session_state.bom, 1):
-            st.write(f"{i}. {item['name']}")
-        if st.button("Clear bill", use_container_width=True):
-            st.session_state.bom = []
-            st.rerun()
+        for cat in sorted(st.session_state.bom.keys()):
+            st.markdown(f"**{cat}**")
+            for i, item in enumerate(st.session_state.bom[cat], 1):
+                st.write(f"{i}. {item['name']}")
+    if st.button("Clear bill", use_container_width=True):
+        st.session_state.bom = {}
+        st.rerun()
 
 if not st.session_state.path_ids:
     st.info("Select a root in the sidebar.")
@@ -181,15 +193,27 @@ with col1:
 
 with col2:
     st.subheader("Pick materials")
-    scope = st.radio("List", ["Children here", "All under top root"], horizontal=True)
+    scope = st.radio(
+        "List",
+        ["Children here", "All under top root"],
+        horizontal=True,
+    )
 
     if scope == "Children here":
         items = get_children(current_id)
-        table_rows = [{"bill": False, "name": x["label"], "_id": x["id"]} for x in items]
+        table_rows = [
+            {"bill": False, "name": x["label"], "_id": x["id"]}
+            for x in items
+        ]
     else:
         items = get_descendants(st.session_state.path_ids[0])
         table_rows = [
-            {"bill": False, "name": x["label"], "_id": x["id"], **attrs_for_props(x["props"] or {})}
+            {
+                "bill": False,
+                "name": x["label"],
+                "_id": x["id"],
+                **attrs_for_props(x["props"] or {}),
+            }
             for x in items
         ]
 
@@ -198,9 +222,13 @@ with col2:
     else:
         df = pd.DataFrame(table_rows)
         edited = st.data_editor(
-            df.drop(columns=["_id"]),
+            df.drop(columns=["_id"], errors="ignore"),
             column_config={"bill": st.column_config.CheckboxColumn("Bill")},
-            disabled=[c for c in df.columns if c != "bill" and c != "_id"],
+            disabled=[
+                col
+                for col in df.drop(columns=["_id"], errors="ignore").columns
+                if col != "bill"
+            ],
             hide_index=True,
             use_container_width=True,
             key="pick_editor",
@@ -212,6 +240,8 @@ with col2:
                     continue
                 mid = df.loc[i, "_id"]
                 name = row["name"]
-                if not any(b["id"] == mid for b in st.session_state.bom):
-                    st.session_state.bom.append({"id": mid, "name": name})
+                cat = get_ontology_category(mid)
+                st.session_state.bom.setdefault(cat, [])
+                if not any(b["id"] == mid for b in st.session_state.bom[cat]):
+                    st.session_state.bom[cat].append({"id": mid, "name": name})
             st.rerun()
