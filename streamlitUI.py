@@ -1,19 +1,21 @@
-# app.py
+# app.py — Material Ontology Explorer (view only, no export)
+
 from __future__ import annotations
 
-from dataclasses import dataclass
-from io import BytesIO
 from typing import Any
 
 import pandas as pd
 import streamlit as st
 from neo4j import GraphDatabase, Driver
 
+# =============================================================================
+# PAGE
+# =============================================================================
 st.set_page_config(page_title="Material Ontology Explorer", layout="wide")
 
-# -----------------------------------------------------------------------------
-# Configuration
-# -----------------------------------------------------------------------------
+# =============================================================================
+# CONFIG (lines ~15–25)
+# =============================================================================
 ATTRIBUTE_TEMPLATE_KEYS = (
     "name", "id", "code", "database", "placement", "vector",
     "synonyms", "comment", "citation", "standards", "region",
@@ -22,9 +24,15 @@ ATTRIBUTE_TEMPLATE_KEYS = (
 NODE_LABEL = "Material"
 CHILD_REL = "HAS_CHILD"
 
-# -----------------------------------------------------------------------------
-# Neo4j
-# -----------------------------------------------------------------------------
+# Attributes hidden from UI tables (identity / technical)
+UI_ATTRS = [
+    k for k in ATTRIBUTE_TEMPLATE_KEYS
+    if k not in ("name", "id", "code", "database", "vector", "placement")
+]
+
+# =============================================================================
+# NEO4J CONNECTION (lines ~35–45)
+# =============================================================================
 @st.cache_resource
 def get_driver() -> Driver:
     return GraphDatabase.driver(
@@ -38,9 +46,9 @@ def run_query(query: str, params: dict[str, Any] | None = None) -> list[dict[str
     with driver.session() as session:
         return [r.data() for r in session.run(query, params or {})]
 
-# -----------------------------------------------------------------------------
-# Cypher — all navigation on YOUR n.id (hash), not elementId
-# -----------------------------------------------------------------------------
+# =============================================================================
+# CYPHER QUERIES (lines ~50–95)
+# =============================================================================
 def get_root_nodes() -> list[dict[str, str]]:
     return run_query(f"""
         MATCH (n:{NODE_LABEL})
@@ -52,10 +60,7 @@ def get_root_nodes() -> list[dict[str, str]]:
 def get_node_summary(material_id: str) -> dict[str, Any] | None:
     rows = run_query(f"""
         MATCH (n:{NODE_LABEL} {{id: $id}})
-        RETURN n.id AS id,
-               n.name AS label,
-               properties(n) AS props,
-               EXISTS {{ (n)-[:{CHILD_REL}]->(:{NODE_LABEL}) }} AS has_children
+        RETURN n.id AS id, n.name AS label, properties(n) AS props
     """, {"id": material_id})
     return rows[0] if rows else None
 
@@ -83,7 +88,6 @@ def get_subtree(root_id: str) -> list[dict[str, Any]]:
         WHERE root.id = $root_id
         WITH n, min(length(p)) AS depth, head(collect(p)) AS chosen_path
         RETURN
-          n.id AS node_id,
           n.name AS node_label,
           properties(n) AS node_props,
           depth,
@@ -91,61 +95,50 @@ def get_subtree(root_id: str) -> list[dict[str, Any]]:
         ORDER BY depth, node_label
     """, {"root_id": root_id})
 
-# -----------------------------------------------------------------------------
-# Helpers
-# -----------------------------------------------------------------------------
+# =============================================================================
+# HELPERS (lines ~100–130)
+# =============================================================================
 def safe_join_path(parts: list[str]) -> str:
     return " → ".join(p for p in parts if p)
 
-def available_attributes(props: dict[str, Any]) -> list[str]:
-    return [
-        k for k in ATTRIBUTE_TEMPLATE_KEYS
-        if props.get(k) not in (None, "", [], {})
-    ]
-
-def build_node_rows(subtree_rows: list[dict[str, Any]]) -> pd.DataFrame:
+def build_subtree_table(subtree_rows: list[dict[str, Any]]) -> pd.DataFrame:
     rows = []
     for row in subtree_rows:
         props = row["node_props"] or {}
-        base = {
-            "selected": True,
-            "id": row["node_id"],
+        rec = {
             "name": row["node_label"],
             "depth": row["depth"],
             "path": safe_join_path(row["path_labels"] or []),
         }
-        for k in available_attributes(props):
-            base[k] = props[k]
-        rows.append(base)
+        for k in UI_ATTRS:
+            if props.get(k) not in (None, "", [], {}):
+                rec[k] = props[k]
+        rows.append(rec)
     df = pd.DataFrame(rows)
     if not df.empty:
         df = df.sort_values(["depth", "path", "name"], kind="stable").reset_index(drop=True)
     return df
 
-def to_excel(selected: pd.DataFrame, full: pd.DataFrame) -> bytes:
-    buf = BytesIO()
-    with pd.ExcelWriter(buf, engine="openpyxl") as w:
-        selected.to_excel(w, sheet_name="selected", index=False)
-        full.to_excel(w, sheet_name="full_subtree", index=False)
-    buf.seek(0)
-    return buf.read()
-
-# -----------------------------------------------------------------------------
-# Session
-# -----------------------------------------------------------------------------
+# =============================================================================
+# SESSION STATE (lines ~135–140)
+# =============================================================================
 if "path_ids" not in st.session_state:
     st.session_state.path_ids = []
 
-# -----------------------------------------------------------------------------
-# UI
-# -----------------------------------------------------------------------------
+# =============================================================================
+# TITLE (line ~145)
+# =============================================================================
 st.title("Material Ontology Explorer")
 
+# =============================================================================
+# SIDEBAR — navigation (lines ~150–210)
+# =============================================================================
 with st.sidebar:
     st.header("Navigation")
+
     roots = get_root_nodes()
     if not roots:
-        st.error("No Material nodes found.")
+        st.error("No Material nodes in database.")
         st.stop()
 
     root_map = {r["id"]: r["label"] for r in roots}
@@ -187,27 +180,35 @@ with st.sidebar:
     if st.session_state.path_ids:
         st.caption(safe_join_path(get_breadcrumb_labels(st.session_state.path_ids)))
 
+# =============================================================================
+# STOP if nothing selected (lines ~215–220)
+# =============================================================================
 if not st.session_state.path_ids:
     st.info("Select a root in the sidebar.")
     st.stop()
 
+# =============================================================================
+# LOAD CURRENT NODE (lines ~225–235)
+# =============================================================================
 current_id = st.session_state.path_ids[-1]
 node = get_node_summary(current_id)
 if not node:
-    st.error("Node not found.")
+    st.error("Could not load this material.")
     st.stop()
 
 props = node["props"] or {}
+
+# =============================================================================
+# MAIN — two columns (lines ~240–280)
+# =============================================================================
 col1, col2 = st.columns([1.2, 2.0])
 
+# --- LEFT: current material + attributes ---
 with col1:
     st.subheader("Current material")
-    st.write(f"**Name:** {props.get('name', node['label'])}")
-    st.write(f"**id:** `{props.get('id', '')}`")
-    st.write(f"**code:** `{props.get('code', '')}`")
-    st.write(f"**Has children:** {'Yes' if node['has_children'] else 'No'}")
+    st.write(f"**{props.get('name', node['label'])}**")
 
-    avail = available_attributes(props)
+    avail = [k for k in UI_ATTRS if props.get(k) not in (None, "", [], {})]
     st.subheader("Attributes")
     if avail:
         st.dataframe(
@@ -218,29 +219,18 @@ with col1:
     else:
         st.caption("No attributes on this node.")
 
+# --- RIGHT: subtree table ---
 with col2:
     st.subheader("Subtree")
     scope = st.radio("Show from", ["Current node", "Top-level root"], horizontal=True)
     root_id = current_id if scope == "Current node" else st.session_state.path_ids[0]
 
-    df = build_node_rows(get_subtree(root_id))
+    df = build_subtree_table(get_subtree(root_id))
     if df.empty:
-        st.warning("No subtree rows.")
-        st.stop()
+        st.warning("No rows in this subtree.")
+    else:
+        st.dataframe(df, use_container_width=True, hide_index=True)
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
-
-    st.divider()
-    edited = st.data_editor(
-        df,
-        column_config={"selected": st.column_config.CheckboxColumn("Export")},
-        disabled=[c for c in df.columns if c != "selected"],
-        hide_index=True,
-        use_container_width=True,
-    )
-    st.download_button(
-        "Download Excel",
-        data=to_excel(edited[edited["selected"]], df),
-        file_name="materials_export.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
+# =============================================================================
+# END OF FILE — no export, no download, nothing below here
+# =============================================================================
