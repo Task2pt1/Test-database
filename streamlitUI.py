@@ -229,6 +229,7 @@ def render_material_node(
     *,
     depth: int = 0,
     expanded: bool = False,
+    path: str = "0",
 ) -> None:
     props = parse_props(node.get("props"))
     name = props.get("name") or node.get("label") or node.get("id")
@@ -248,7 +249,8 @@ def render_material_node(
             f"code: `{props.get('code', '')}` · "
             f"database: `{props.get('database', '')}`"
         )
-        cb_key = f"bill_{node['id']}_{depth}"
+
+        cb_key = f"bill_{node['id']}_{path}"
         st.checkbox(
             "Add to bill of materials",
             value=is_in_bill(node["id"]),
@@ -256,6 +258,7 @@ def render_material_node(
             on_change=on_bill_toggle,
             args=(node["id"], name, cb_key),
         )
+
         if attr_rows:
             st.markdown("**Attribute values**")
             wide_row = {"material": name}
@@ -267,9 +270,13 @@ def render_material_node(
             )
         else:
             st.caption("No attribute values on this node.")
+
         for key in ATTR_BLOCKS:
             if key in props and props[key] not in (None, "", {}, []):
-                with st.expander(f"{key} (structured)"):
+                with st.expander(
+                    f"{key} (structured)",
+                    key=f"struct_{node['id']}_{path}_{key}",
+                ):
                     val = props[key]
                     if isinstance(val, (dict, list)):
                         st.json(val)
@@ -278,9 +285,13 @@ def render_material_node(
 
         if children:
             st.markdown("**Submaterials**")
-            for child in children:
-                render_material_node(child, depth=depth + 1, expanded=False)
-
+            for i, child in enumerate(children):
+                render_material_node(
+                    child,
+                    depth=depth + 1,
+                    expanded=False,
+                    path=f"{path}_{i}",
+                )
 
 # -------------------------------------------------
 # Session state
