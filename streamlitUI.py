@@ -1,4 +1,4 @@
-# streamlitUI.py — Material Ontology Explorer (full extraction)
+# streamlitUI.py — Material Ontology Explorer
 
 from __future__ import annotations
 
@@ -46,9 +46,6 @@ def run_query(query: str, params: dict[str, Any] | None = None) -> list[dict[str
         return [r.data() for r in session.run(query, params or {})]
 
 
-# -------------------------------------------------
-# Parse Neo4j properties → usable Python
-# -------------------------------------------------
 def parse_stored(v: Any) -> Any:
     if isinstance(v, str):
         s = v.strip()
@@ -100,9 +97,6 @@ def extract_attribute_rows(props: dict[str, Any]) -> list[dict[str, str]]:
     return rows
 
 
-# -------------------------------------------------
-# Neo4j queries
-# -------------------------------------------------
 def get_root_nodes() -> list[dict[str, str]]:
     return run_query(
         f"""
@@ -136,19 +130,6 @@ def get_children(material_id: str) -> list[dict[str, Any]]:
     )
 
 
-def get_subtree(material_id: str) -> list[dict[str, Any]]:
-    return run_query(
-        f"""
-        MATCH (root:{NODE_LABEL} {{id: $root_id}})
-        OPTIONAL MATCH p = (root)-[:{CHILD_REL}*0..]->(n:{NODE_LABEL})
-        WITH n, min(length(p)) AS depth
-        RETURN n.id AS id, n.name AS label, properties(n) AS props, depth
-        ORDER BY depth, label
-        """,
-        {"root_id": material_id},
-    )
-
-
 def get_breadcrumb_labels(path_ids: list[str]) -> list[str]:
     if not path_ids:
         return []
@@ -178,50 +159,28 @@ def get_ontology_category(material_id: str) -> str:
     return rows[0]["category"] if rows else "Unknown"
 
 
-# -------------------------------------------------
-# Wide layout + bill of materials
-# -------------------------------------------------
 def attrs_to_wide_row(attr_rows: list[dict[str, str]]) -> dict[str, str]:
     return {r["attribute"]: r["value"] for r in attr_rows}
 
 
-def render_attributes_wide(
-    attr_rows: list[dict[str, str]],
-    *,
-    material_name: str | None = None,
-) -> None:
+def render_attributes_wide(attr_rows: list[dict[str, str]], material_name: str) -> None:
+    """
+    Swapped orientation:
+      OLD: attribute | value  (rows)
+      NEW: material | engineering.x | engineering.y | notes | …  (columns across top)
+    """
     if not attr_rows:
         st.caption("No attribute values on this node.")
         return
 
-    row = attrs_to_wide_row(attr_rows)
-    if material_name:
-        row = {"material": material_name, **row}
+    wide = {"material": material_name}
+    wide.update(attrs_to_wide_row(attr_rows))
 
     st.dataframe(
-        pd.DataFrame([row]),
+        pd.DataFrame([wide]),
         use_container_width=True,
         hide_index=True,
     )
-
-
-def subtree_to_wide_df(subtree: list[dict[str, Any]]) -> pd.DataFrame:
-    rows: list[dict[str, Any]] = []
-
-    for node in subtree:
-        props = parse_props(node.get("props"))
-        name = props.get("name") or node.get("label")
-        attr_rows = extract_attribute_rows(node.get("props") or {})
-
-        row: dict[str, Any] = {
-            "depth": node["depth"],
-            "material": name,
-            "_id": node["id"],
-        }
-        row.update(attrs_to_wide_row(attr_rows))
-        rows.append(row)
-
-    return pd.DataFrame(rows)
 
 
 def is_in_bill(material_id: str) -> bool:
@@ -250,9 +209,12 @@ def remove_from_bill(material_id: str) -> None:
             del st.session_state.bom[cat]
 
 
-def on_bill_checkbox_change(material_id: str, name: str, attr_rows: list[dict[str, str]], widget_key: str) -> None:
+def on_bill_toggle(material_id: str, name: str, widget_key: str) -> None:
     if st.session_state[widget_key]:
-        add_to_bill(material_id, name, attr_rows)
+        node = get_node(material_id)
+        if node:
+            attr_rows = extract_attribute_rows(node.get("props") or {})
+            add_to_bill(material_id, name, attr_rows)
     else:
         remove_from_bill(material_id)
 
@@ -267,21 +229,12 @@ def render_bill_sidebar() -> None:
         st.markdown(f"**{cat}**")
         for i, item in enumerate(st.session_state.bom[cat], 1):
             st.write(f"{i}. {item['name']}")
-            vals = item.get("values") or {}
-            if vals:
-                preview = "; ".join(f"{k}={v}" for k, v in list(vals.items())[:3])
-                if len(vals) > 3:
-                    preview += f" … (+{len(vals) - 3} more)"
-                st.caption(preview)
 
     if st.button("Clear bill", use_container_width=True):
         st.session_state.bom = {}
         st.rerun()
 
 
-# -------------------------------------------------
-# Tree UI
-# -------------------------------------------------
 def render_material_node(
     node: dict[str, Any],
     *,
@@ -307,18 +260,18 @@ def render_material_node(
             f"database: `{props.get('database', '')}`"
         )
 
-        widget_key = f"bill_cb_{node['id']}_{depth}"
+        cb_key = f"bill_{node['id']}_{depth}"
         st.checkbox(
             "Add to bill of materials",
             value=is_in_bill(node["id"]),
-            key=widget_key,
-            on_change=on_bill_checkbox_change,
-            args=(node["id"], name, attr_rows, widget_key),
+            key=cb_key,
+            on_change=on_bill_toggle,
+            args=(node["id"], name, cb_key),
         )
 
         if attr_rows:
             st.markdown("**Attribute values**")
-            render_attributes_wide(attr_rows, material_name=name)
+            render_attributes_wide(attr_rows, name)
         else:
             st.caption("No attribute values on this node.")
 
@@ -333,9 +286,6 @@ def render_material_node(
                 render_material_node(child, depth=depth + 1, expanded=False)
 
 
-# -------------------------------------------------
-# Session state
-# -------------------------------------------------
 if "path_ids" not in st.session_state:
     st.session_state.path_ids = []
 
@@ -345,9 +295,6 @@ if "bom" not in st.session_state:
 
 st.title("Material Ontology Explorer")
 
-# -------------------------------------------------
-# Sidebar
-# -------------------------------------------------
 with st.sidebar:
     st.header("Navigation")
 
@@ -418,95 +365,9 @@ if not node:
 props = parse_props(node["props"])
 name = props.get("name") or node["label"]
 direct_children = get_children(current_id)
-subtree = get_subtree(current_id)
 
 st.header(name)
-st.caption(
-    f"Direct submaterials: **{len(direct_children)}** · "
-    f"Total nodes in subtree: **{len(subtree)}**"
-)
+st.caption(f"Direct submaterials: **{len(direct_children)}**")
 
-# -------------------------------------------------
-# MAIN EXTRACTION VIEWS (the version you liked)
-# -------------------------------------------------
-tab_tree, tab_table, tab_bom = st.tabs(
-    ["Submaterial tree + values", "Flat extraction table", "Pick for BOM"]
-)
-
-with tab_tree:
-    st.subheader("Submaterials and attribute values")
-    st.caption(
-        "Each expander is a Material node. "
-        "Check the box to add it and its attributes to the sidebar BOM "
-        "(grouped by top-level category: Cement, Masonry, …)."
-    )
-    render_material_node(node, depth=0, expanded=True)
-
-with tab_table:
-    st.subheader("All materials under this node — wide attribute table")
-    st.caption(
-        "Each row = one material. "
-        "Each column = one attribute path (engineering.…, activity.…, notes, …)."
-    )
-
-    wide_df = subtree_to_wide_df(subtree)
-
-    if wide_df.empty:
-        st.info("No materials in this subtree.")
-    else:
-        show_df = wide_df.drop(columns=["_id"], errors="ignore")
-        st.dataframe(show_df, use_container_width=True, hide_index=True)
-
-        st.download_button(
-            "Download extracted values (CSV)",
-            show_df.to_csv(index=False),
-            file_name=f"{name}_extract.csv",
-            mime="text/csv",
-        )
-
-with tab_bom:
-    st.subheader("Pick materials for bill")
-    scope = st.radio(
-        "List",
-        ["Children here", "All under this node"],
-        horizontal=True,
-    )
-
-    items = direct_children if scope == "Children here" else [r for r in subtree if r["depth"] > 0]
-
-    table_rows = []
-    for x in items:
-        p = parse_props(x["props"])
-        mat_name = p.get("name") or x["label"]
-        attr_rows = extract_attribute_rows(x["props"] or {})
-        wide = attrs_to_wide_row(attr_rows)
-
-        row = {"bill": is_in_bill(x["id"]), "material": mat_name, "_id": x["id"]}
-        row.update(wide)
-        table_rows.append(row)
-
-    if not table_rows:
-        st.caption("Nothing to pick.")
-    else:
-        df = pd.DataFrame(table_rows)
-        edited = st.data_editor(
-            df.drop(columns=["_id"]),
-            column_config={"bill": st.column_config.CheckboxColumn("Bill")},
-            disabled=[c for c in df.columns if c not in ("bill",)],
-            hide_index=True,
-            use_container_width=True,
-            key="pick_editor",
-        )
-
-        if st.button("Apply checked to bill"):
-            for i, row in edited.iterrows():
-                mid = df.loc[i, "_id"]
-                mat_name = row["material"]
-                attr_rows = extract_attribute_rows(
-                    next(x["props"] for x in items if x["id"] == mid) or {}
-                )
-                if row.get("bill"):
-                    add_to_bill(mid, mat_name, attr_rows)
-                else:
-                    remove_from_bill(mid)
-            st.rerun()
+st.subheader("Submaterials and attribute values")
+render_material_node(node, depth=0, expanded=True)
