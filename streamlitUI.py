@@ -182,7 +182,44 @@ def get_ontology_category(material_id: str) -> str:
         {"id": material_id},
     )
     return rows[0]["category"] if rows else "Unknown"
+def attrs_to_wide_row(attr_rows: list[dict[str, str]]) -> dict[str, str]:
+    return {r["attribute"]: r["value"] for r in attr_rows}
 
+
+def is_in_bill(material_id: str) -> bool:
+    for items in st.session_state.bom.values():
+        if any(b["id"] == material_id for b in items):
+            return True
+    return False
+
+
+def add_to_bill(material_id: str, name: str, attr_rows: list[dict[str, str]]) -> None:
+    category = get_ontology_category(material_id)  # top root: Masonry, Cement, …
+    entry = {
+        "id": material_id,
+        "name": name,
+        "values": attrs_to_wide_row(attr_rows),
+    }
+    st.session_state.bom.setdefault(category, [])
+    if not any(b["id"] == material_id for b in st.session_state.bom[category]):
+        st.session_state.bom[category].append(entry)
+
+
+def remove_from_bill(material_id: str) -> None:
+    for cat, items in list(st.session_state.bom.items()):
+        st.session_state.bom[cat] = [b for b in items if b["id"] != material_id]
+        if not st.session_state.bom[cat]:
+            del st.session_state.bom[cat]
+
+
+def on_bill_toggle(material_id: str, name: str, widget_key: str) -> None:
+    if st.session_state[widget_key]:
+        node = get_node(material_id)
+        if node:
+            attr_rows = extract_attribute_rows(node.get("props") or {})
+            add_to_bill(material_id, name, attr_rows)
+    else:
+        remove_from_bill(material_id)
 
 # -------------------------------------------------
 # UI: render one material + recurse into submaterials
@@ -211,21 +248,33 @@ def render_material_node(
             f"code: `{props.get('code', '')}` · "
             f"database: `{props.get('database', '')}`"
         )
-
+        cb_key = f"bill_{node['id']}_{depth}"
+        st.checkbox(
+            "Add to bill of materials",
+            value=is_in_bill(node["id"]),
+            key=cb_key,
+            on_change=on_bill_toggle,
+            args=(node["id"], name, cb_key),
+        )
         if attr_rows:
             st.markdown("**Attribute values**")
+            wide_row = {"material": name}
+            wide_row.update({r["attribute"]: r["value"] for r in attr_rows})
             st.dataframe(
-                pd.DataFrame(attr_rows),
+                pd.DataFrame([wide_row]),
                 use_container_width=True,
                 hide_index=True,
             )
         else:
             st.caption("No attribute values on this node.")
-
         for key in ATTR_BLOCKS:
             if key in props and props[key] not in (None, "", {}, []):
                 with st.expander(f"{key} (structured)"):
-                    st.json(props[key])
+                    val = props[key]
+                    if isinstance(val, (dict, list)):
+                        st.json(val)
+                    else:
+                        st.write(val)
 
         if children:
             st.markdown("**Submaterials**")
@@ -309,6 +358,14 @@ with st.sidebar:
             st.markdown(f"**{cat}**")
             for i, item in enumerate(st.session_state.bom[cat], 1):
                 st.write(f"{i}. {item['name']}")
+                vals = item.get("values") or {}
+                if vals:
+                    preview = "; ".join(
+                        f"{k}={v}" for k, v in list(vals.items())[:3]
+                    )
+                    if len(vals) > 3:
+                        preview += f" … (+{len(vals) - 3} more)"
+                    st.caption(preview)
     if st.button("Clear bill", use_container_width=True):
         st.session_state.bom = {}
         st.rerun()
