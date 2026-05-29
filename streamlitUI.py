@@ -1,38 +1,35 @@
-# streamlitUI.py — Material Ontology Explorer (view + BOM by category, no export)
+# streamlitUI.py — Material Ontology Explorer (full extraction)
 
 from __future__ import annotations
+
+import json
 from typing import Any
+
 import pandas as pd
 import streamlit as st
 from neo4j import Driver, GraphDatabase
 
 st.set_page_config(page_title="Material Ontology Explorer", layout="wide")
 
-ATTRIBUTE_TEMPLATE_KEYS = (
-    "name",
-    "id",
-    "code",
-    "database",
-    "placement",
-    "vector",
-    "synonyms",
-    "comment",
-    "citation",
-    "standards",
-    "region",
+NODE_LABEL = "Material"
+CHILD_REL = "HAS_CHILD"
+
+# attribute blocks stored on Material nodes (JSON strings after upload)
+ATTR_BLOCKS = (
     "engineering",
     "activity",
     "lcia",
     "material_cost",
-    "notes")
-NODE_LABEL = "Material"
-CHILD_REL = "HAS_CHILD"
+    "standards",
+    "synonyms",
+    "citation",
+    "comment",
+    "notes",
+    "region",
+)
 
-UI_ATTRS = [
-    k
-    for k in ATTRIBUTE_TEMPLATE_KEYS
-    if k not in ("name", "id", "code", "database", "vector", "placement")
-]
+META_KEYS = {"name", "id", "code", "database", "vector", "placement"}
+
 
 @st.cache_resource
 def get_driver() -> Driver:
@@ -40,6 +37,7 @@ def get_driver() -> Driver:
         st.secrets["NEO4J_URI"],
         auth=(st.secrets["NEO4J_USERNAME"], st.secrets["NEO4J_PASSWORD"]),
     )
+
 
 driver = get_driver()
 
@@ -49,6 +47,66 @@ def run_query(query: str, params: dict[str, Any] | None = None) -> list[dict[str
         return [r.data() for r in session.run(query, params or {})]
 
 
+# -------------------------------------------------
+# Parse Neo4j properties → usable Python
+# -------------------------------------------------
+def parse_stored(v: Any) -> Any:
+    if isinstance(v, str):
+        s = v.strip()
+        if s and s[0] in "{[":
+            try:
+                return json.loads(s)
+            except json.JSONDecodeError:
+                pass
+    return v
+
+
+def parse_props(props: dict[str, Any] | None) -> dict[str, Any]:
+    return {k: parse_stored(v) for k, v in (props or {}).items()}
+
+
+def flatten_leaves(obj: Any, prefix: str = "") -> list[dict[str, str]]:
+    """Every scalar measurement/value at any depth."""
+    rows: list[dict[str, str]] = []
+
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            path = f"{prefix}.{k}" if prefix else k
+            rows.extend(flatten_leaves(v, path))
+    elif isinstance(obj, list):
+        if obj and all(not isinstance(x, (dict, list)) for x in obj):
+            rows.append({"attribute": prefix, "value": ", ".join(str(x) for x in obj)})
+        else:
+            for i, item in enumerate(obj):
+                rows.extend(flatten_leaves(item, f"{prefix}[{i}]"))
+    elif obj not in (None, ""):
+        rows.append({"attribute": prefix, "value": str(obj)})
+
+    return rows
+
+
+def extract_attribute_rows(props: dict[str, Any]) -> list[dict[str, str]]:
+    """All measurable / literal values on one Material node."""
+    parsed = parse_props(props)
+    rows: list[dict[str, str]] = []
+
+    for key in ATTR_BLOCKS:
+        if key not in parsed or parsed[key] in (None, "", {}, []):
+            continue
+        rows.extend(flatten_leaves(parsed[key], key))
+
+    # anything else stored on the node
+    for k, v in parsed.items():
+        if k in META_KEYS or k in ATTR_BLOCKS:
+            continue
+        rows.extend(flatten_leaves(v, k))
+
+    return rows
+
+
+# -------------------------------------------------
+# Neo4j queries — ALWAYS fetch properties(n)
+# -------------------------------------------------
 def get_root_nodes() -> list[dict[str, str]]:
     return run_query(
         f"""
@@ -60,7 +118,7 @@ def get_root_nodes() -> list[dict[str, str]]:
     )
 
 
-def get_node_summary(material_id: str) -> dict[str, Any] | None:
+def get_node(material_id: str) -> dict[str, Any] | None:
     rows = run_query(
         f"""
         MATCH (n:{NODE_LABEL} {{id: $id}})
@@ -71,14 +129,29 @@ def get_node_summary(material_id: str) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
-def get_children(material_id: str) -> list[dict[str, str]]:
+def get_children(material_id: str) -> list[dict[str, Any]]:
+    """Direct submaterials WITH full properties."""
     return run_query(
         f"""
         MATCH (:{NODE_LABEL} {{id: $id}})-[:{CHILD_REL}]->(c:{NODE_LABEL})
-        RETURN c.id AS id, c.name AS label
+        RETURN c.id AS id, c.name AS label, properties(c) AS props
         ORDER BY label
         """,
         {"id": material_id},
+    )
+
+
+def get_subtree(material_id: str) -> list[dict[str, Any]]:
+    """This node + every descendant, with depth."""
+    return run_query(
+        f"""
+        MATCH (root:{NODE_LABEL} {{id: $root_id}})
+        OPTIONAL MATCH p = (root)-[:{CHILD_REL}*0..]->(n:{NODE_LABEL})
+        WITH n, min(length(p)) AS depth
+        RETURN n.id AS id, n.name AS label, properties(n) AS props, depth
+        ORDER BY depth, label
+        """,
+        {"root_id": material_id},
     )
 
 
@@ -97,18 +170,6 @@ def get_breadcrumb_labels(path_ids: list[str]) -> list[str]:
     return [label_map.get(i, i) for i in path_ids]
 
 
-def get_descendants(root_id: str) -> list[dict[str, Any]]:
-    return run_query(
-        f"""
-        MATCH (root:{NODE_LABEL})-[:{CHILD_REL}*1..]->(n:{NODE_LABEL})
-        WHERE root.id = $root_id
-        RETURN n.id AS id, n.name AS label, properties(n) AS props
-        ORDER BY label
-        """,
-        {"root_id": root_id},
-    )
-
-
 def get_ontology_category(material_id: str) -> str:
     rows = run_query(
         """
@@ -123,22 +184,70 @@ def get_ontology_category(material_id: str) -> str:
     return rows[0]["category"] if rows else "Unknown"
 
 
-def attrs_for_props(props: dict[str, Any]) -> dict[str, Any]:
-    return {
-        k: props[k]
-        for k in UI_ATTRS
-        if props.get(k) not in (None, "", [], {})
-    }
+# -------------------------------------------------
+# UI: render one material + recurse into submaterials
+# -------------------------------------------------
+def render_material_node(
+    node: dict[str, Any],
+    *,
+    depth: int = 0,
+    expanded: bool = False,
+) -> None:
+    props = parse_props(node.get("props"))
+    name = props.get("name") or node.get("label") or node.get("id")
+    attr_rows = extract_attribute_rows(node.get("props") or {})
+    children = get_children(node["id"])
+
+    indent = "　" * depth
+    title = f"{indent}{name}"
+    if children:
+        title += f"  ({len(children)} submaterials)"
+    if attr_rows:
+        title += f"  [{len(attr_rows)} values]"
+
+    with st.expander(title, expanded=expanded):
+        st.caption(
+            f"id: `{props.get('id', node['id'])}` · "
+            f"code: `{props.get('code', '')}` · "
+            f"database: `{props.get('database', '')}`"
+        )
+
+        if attr_rows:
+            st.markdown("**Attribute values**")
+            st.dataframe(
+                pd.DataFrame(attr_rows),
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.caption("No attribute values on this node.")
+
+        for key in ATTR_BLOCKS:
+            if key in props and props[key] not in (None, "", {}, []):
+                with st.expander(f"{key} (structured)"):
+                    st.json(props[key])
+
+        if children:
+            st.markdown("**Submaterials**")
+            for child in children:
+                render_material_node(child, depth=depth + 1, expanded=False)
 
 
+# -------------------------------------------------
+# Session state
+# -------------------------------------------------
 if "path_ids" not in st.session_state:
     st.session_state.path_ids = []
 
 if "bom" not in st.session_state:
     st.session_state.bom = {}
 
+
 st.title("Material Ontology Explorer")
 
+# -------------------------------------------------
+# Sidebar navigation (unchanged logic)
+# -------------------------------------------------
 with st.sidebar:
     st.header("Navigation")
 
@@ -166,11 +275,16 @@ with st.sidebar:
             if not kids:
                 break
             kid_map = {c["id"]: c["label"] for c in kids}
-            cur = st.session_state.path_ids[level] if level < len(st.session_state.path_ids) else None
+            cur = (
+                st.session_state.path_ids[level]
+                if level < len(st.session_state.path_ids)
+                else None
+            )
+            options = [None] + list(kid_map.keys())
             pick = st.selectbox(
                 f"Level {level + 1}",
-                [None] + list(kid_map.keys()),
-                index=([None] + list(kid_map.keys())).index(cur) if cur in kid_map else 0,
+                options,
+                index=options.index(cur) if cur in kid_map else 0,
                 format_func=lambda x: "— stop —" if x is None else kid_map[x],
                 key=f"lvl_{level}",
             )
@@ -199,67 +313,121 @@ with st.sidebar:
         st.session_state.bom = {}
         st.rerun()
 
+
 if not st.session_state.path_ids:
     st.info("Select a root in the sidebar.")
     st.stop()
 
+
 current_id = st.session_state.path_ids[-1]
-node = get_node_summary(current_id)
+node = get_node(current_id)
 if not node:
     st.error("Could not load this material.")
     st.stop()
 
-props = node["props"] or {}
-st.json(props)
-col1, col2 = st.columns([1.2, 2.0])
+props = parse_props(node["props"])
+name = props.get("name") or node["label"]
+direct_children = get_children(current_id)
+subtree = get_subtree(current_id)
 
-with col1:
-    st.subheader("Current material")
-    st.write(f"**{props.get('name', node['label'])}**")
+st.header(name)
+st.caption(
+    f"Direct submaterials: **{len(direct_children)}** · "
+    f"Total nodes in subtree: **{len(subtree)}**"
+)
 
-    avail = [k for k in UI_ATTRS if props.get(k) not in (None, "", [], {})]
-    st.subheader("Attributes")
-    if avail:
+# -------------------------------------------------
+# MAIN EXTRACTION VIEWS
+# -------------------------------------------------
+tab_tree, tab_table, tab_bom = st.tabs(
+    ["Submaterial tree + values", "Flat extraction table", "Pick for BOM"]
+)
+
+with tab_tree:
+    st.subheader("Submaterials and attribute values")
+    st.caption(
+        "Each row is a Material node from Neo4j. "
+        "Submaterials = HAS_CHILD edges. "
+        "Values = properties on that node (engineering, activity, notes, …)."
+    )
+    render_material_node(node, depth=0, expanded=True)
+
+with tab_table:
+    st.subheader("All materials under this node — every extracted value")
+    all_rows: list[dict[str, str]] = []
+
+    for row in subtree:
+        p = parse_props(row["props"])
+        mat_name = p.get("name") or row["label"]
+        depth = row["depth"]
+        for attr_row in extract_attribute_rows(row["props"] or {}):
+            all_rows.append(
+                {
+                    "depth": depth,
+                    "material": mat_name,
+                    "attribute": attr_row["attribute"],
+                    "value": attr_row["value"],
+                    "_id": row["id"],
+                }
+            )
+
+    if not all_rows:
+        st.info("No attribute values found in this subtree.")
+    else:
+        df = pd.DataFrame(all_rows)
         st.dataframe(
-            pd.DataFrame([{"attribute": k, "value": props[k]} for k in avail]),
+            df.drop(columns=["_id"]),
             use_container_width=True,
             hide_index=True,
         )
-    else:
-        st.caption("No attributes on this node.")
 
-with col2:
+        st.download_button(
+            "Download extracted values (CSV)",
+            df.drop(columns=["_id"]).to_csv(index=False),
+            file_name=f"{name}_extract.csv",
+            mime="text/csv",
+        )
+
+with tab_bom:
     st.subheader("Pick materials")
     scope = st.radio(
         "List",
-        ["Children here", "All under top root"],
+        ["Children here", "All under this node"],
         horizontal=True,
     )
 
     if scope == "Children here":
-        items = get_children(current_id)
-        table_rows = [{"bill": False, "name": x["label"], "_id": x["id"]} for x in items]
+        items = direct_children
     else:
-        items = get_descendants(st.session_state.path_ids[0])
-        table_rows = [
+        items = [r for r in subtree if r["depth"] > 0]
+
+    table_rows = []
+    for x in items:
+        p = parse_props(x["props"])
+        attr_rows = extract_attribute_rows(x["props"] or {})
+        summary = "; ".join(
+            f"{r['attribute']}={r['value']}" for r in attr_rows[:4]
+        )
+        if len(attr_rows) > 4:
+            summary += f" … (+{len(attr_rows) - 4} more)"
+
+        table_rows.append(
             {
                 "bill": False,
-                "name": x["label"],
+                "name": p.get("name") or x["label"],
+                "values": summary or "—",
                 "_id": x["id"],
-                **attrs_for_props(x["props"] or {}),
             }
-            for x in items
-        ]
+        )
 
     if not table_rows:
-        st.caption("Nothing to pick at this level.")
+        st.caption("Nothing to pick.")
     else:
         df = pd.DataFrame(table_rows)
-        drop_id = df.drop(columns=["_id"], errors="ignore")
         edited = st.data_editor(
-            drop_id,
+            df.drop(columns=["_id"]),
             column_config={"bill": st.column_config.CheckboxColumn("Bill")},
-            disabled=[c for c in drop_id.columns if c != "bill"],
+            disabled=[c for c in df.columns if c not in ("bill",)],
             hide_index=True,
             use_container_width=True,
             key="pick_editor",
@@ -270,9 +438,9 @@ with col2:
                 if not row.get("bill"):
                     continue
                 mid = df.loc[i, "_id"]
-                name = row["name"]
+                mat_name = row["name"]
                 cat = get_ontology_category(mid)
                 st.session_state.bom.setdefault(cat, [])
                 if not any(b["id"] == mid for b in st.session_state.bom[cat]):
-                    st.session_state.bom[cat].append({"id": mid, "name": name})
+                    st.session_state.bom[cat].append({"id": mid, "name": mat_name})
             st.rerun()
