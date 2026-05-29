@@ -266,6 +266,13 @@ def render_bill_sidebar() -> None:
 # -------------------------------------------------
 # UI: render one material + recurse into submaterials
 # -------------------------------------------------
+def is_in_bill(material_id: str) -> bool:
+    for items in st.session_state.bom.values():
+        if any(b["id"] == material_id for b in items):
+            return True
+    return False
+
+
 def render_material_node(
     node: dict[str, Any],
     *,
@@ -291,11 +298,22 @@ def render_material_node(
             f"database: `{props.get('database', '')}`"
         )
 
-        btn_col, _ = st.columns([1, 3])
-        with btn_col:
-            if st.button("Add to bill", key=f"bill_{node['id']}_{depth}"):
-                add_to_bill(node["id"], name, attr_rows)
-                st.rerun()
+        checked = is_in_bill(node["id"])
+        add = st.checkbox(
+            "Add to bill of materials",
+            value=checked,
+            key=f"bill_{node['id']}_{depth}",
+        )
+
+        if add and not checked:
+            add_to_bill(node["id"], name, attr_rows)
+            st.rerun()
+        elif not add and checked:
+            for cat, items in list(st.session_state.bom.items()):
+                st.session_state.bom[cat] = [b for b in items if b["id"] != node["id"]]
+                if not st.session_state.bom[cat]:
+                    del st.session_state.bom[cat]
+            st.rerun()
 
         if attr_rows:
             st.markdown("**Attribute values**")
@@ -312,7 +330,6 @@ def render_material_node(
             st.markdown("**Submaterials**")
             for child in children:
                 render_material_node(child, depth=depth + 1, expanded=False)
-
 # -------------------------------------------------
 # Session state
 # -------------------------------------------------
@@ -413,83 +430,3 @@ tab_tree, tab_table, tab_bom = st.tabs(
     ["Submaterial tree + values", "Flat extraction table", "Pick for BOM"]
 )
 
-with tab_tree:
-    st.subheader("Submaterials and attribute values")
-    st.caption(
-        "Each row is a Material node from Neo4j. "
-        "Submaterials = HAS_CHILD edges. "
-        "Values = properties on that node (engineering, activity, notes, …)."
-    )
-    render_material_node(node, depth=0, expanded=True)
-
-with tab_table:
-    st.subheader("All materials under this node — wide attribute table")
-    st.caption(
-        "Each row = one material. "
-        "Each column = one attribute path (engineering.…, activity.…, notes, …)."
-    )
-
-    wide_df = subtree_to_wide_df(subtree)
-
-    if wide_df.empty:
-        st.info("No materials in this subtree.")
-    else:
-        show_df = wide_df.drop(columns=["_id"], errors="ignore")
-        st.dataframe(show_df, use_container_width=True, hide_index=True)
-
-        st.download_button(
-            "Download extracted values (CSV)",
-            show_df.to_csv(index=False),
-            file_name=f"{name}_extract.csv",
-            mime="text/csv",
-        )
-
-with tab_bom:
-    st.subheader("Pick materials for bill")
-    scope = st.radio(
-        "List",
-        ["Children here", "All under this node"],
-        horizontal=True,
-    )
-
-    items = direct_children if scope == "Children here" else [r for r in subtree if r["depth"] > 0]
-
-    table_rows = []
-    for x in items:
-        p = parse_props(x["props"])
-        mat_name = p.get("name") or x["label"]
-        attr_rows = extract_attribute_rows(x["props"] or {})
-        wide = attrs_to_wide_row(attr_rows)
-
-        row = {"bill": False, "material": mat_name, "_id": x["id"]}
-        row.update(wide)
-        table_rows.append(row)
-
-    if not table_rows:
-        st.caption("Nothing to pick.")
-    else:
-        df = pd.DataFrame(table_rows)
-        edited = st.data_editor(
-            df.drop(columns=["_id"]),
-            column_config={"bill": st.column_config.CheckboxColumn("Bill")},
-            disabled=[c for c in df.columns if c not in ("bill",)],
-            hide_index=True,
-            use_container_width=True,
-            key="pick_editor",
-        )
-
-        if st.button("Add checked to bill"):
-            for i, row in edited.iterrows():
-                if not row.get("bill"):
-                    continue
-                mid = df.loc[i, "_id"]
-                mat_name = row["material"]
-                attr_rows = [
-                    {"attribute": c, "value": str(row[c])}
-                    for c in df.columns
-                    if c not in ("bill", "material", "_id")
-                    and pd.notna(row[c])
-                    and row[c] != ""
-                ]
-                add_to_bill(mid, mat_name, attr_rows)
-            st.rerun()
