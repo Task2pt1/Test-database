@@ -424,9 +424,11 @@ st.caption(
 )
 
 # -------------------------------------------------
-# MAIN EXTRACTION VIEWS
+# MAIN VIEW — submaterial tree + checkbox BOM
 # -------------------------------------------------
-tab_tree, tab_table, tab_bom = st.tabs(
-    ["Submaterial tree + values", "Flat extraction table", "Pick for BOM"]
+st.subheader("Submaterials and attribute values")
+st.caption(
+    "Check **Add to bill of materials** on any material to store it "
+    "and its attributes in the sidebar BOM (grouped by top-level category)."
 )
-
+render_material_node(node, depth=0, expanded=True)
