@@ -381,8 +381,9 @@ def render_clickable_path(path_ids: list[str], indexes: dict[str, Any]) -> None:
         safe_label = html_escape(label)
         parts.append(f'<a href="?crumb={i}" target="_self">{safe_label}</a>')
 
+    separator = '<span class="crumb-sep">›</span>'
     st.markdown(
-        f'<div class="crumbs">{"<span class=\\"crumb-sep\\">›</span>".join(parts)}</div>',
+        f'<div class="crumbs">{separator.join(parts)}</div>',
         unsafe_allow_html=True,
     )
 
