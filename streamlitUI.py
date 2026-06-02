@@ -50,8 +50,6 @@ def run_query(query: str, params: dict[str, Any] | None = None) -> list[dict[str
     with driver.session() as session:
         return [r.data() for r in session.run(query, params or {})]
 
-st.write("NEO4J_URI exists:", bool(st.secrets.get("NEO4J_URI")))
-st.write("NEO4J_URI prefix:", str(st.secrets.get("NEO4J_URI", ""))[:20])
 
 # -----------------------------
 # Property parsing
