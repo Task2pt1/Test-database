@@ -32,6 +32,35 @@ ATTR_BLOCKS = (
 META_KEYS = {"name", "id", "code", "database", "vector", "placement"}
 
 
+# ADDED: breadcrumb styling that looks like inline clickable text, not box buttons
+st.markdown(
+    """
+    <style>
+    .crumbs {
+        font-size: 0.95rem;
+        line-height: 1.6;
+        margin: 0.25rem 0 0.75rem 0;
+        word-wrap: break-word;
+    }
+    .crumbs a {
+        color: inherit;
+        text-decoration: none;
+        font-weight: 500;
+        margin-right: 0.15rem;
+    }
+    .crumbs a:hover {
+        text-decoration: underline;
+    }
+    .crumb-sep {
+        opacity: 0.6;
+        margin: 0 0.25rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 # -----------------------------
 # Neo4j connection
 # -----------------------------
@@ -133,7 +162,6 @@ def get_root_nodes() -> list[dict[str, str]]:
 
 @st.cache_data(show_spinner=False)
 def fetch_root_subtree(root_id: str) -> list[dict[str, Any]]:
-    # ADDED: one cached fetch for the full selected level-0 subtree
     return run_query(
         f"""
         MATCH (root:{NODE_LABEL} {{id: $root_id}})
@@ -156,8 +184,7 @@ def fetch_root_subtree(root_id: str) -> list[dict[str, Any]]:
 
 
 def search_material_path(query: str) -> list[str]:
-    # ADDED: global Neo4j search by your properties name / id / code
-    # REMOVED: upper-left search result list UI
+    # ADDED: global search across all Material nodes by your name / id / code
     q = query.strip().lower()
     if not q:
         return []
@@ -321,22 +348,58 @@ def on_bill_toggle(material_id: str, widget_key: str) -> None:
 
 
 # -----------------------------
-# UI rendering
+# Query-param breadcrumb clicks
 # -----------------------------
+def handle_breadcrumb_click() -> None:
+    # ADDED: breadcrumb click is handled via query params so the path looks like links, not buttons
+    crumb_index = st.query_params.get("crumb")
+    if crumb_index is None:
+        return
+
+    try:
+        idx = int(str(crumb_index))
+    except (TypeError, ValueError):
+        st.query_params.clear()
+        return
+
+    if st.session_state.path_ids and 0 <= idx < len(st.session_state.path_ids):
+        st.session_state.path_ids = st.session_state.path_ids[: idx + 1]
+
+    st.query_params.clear()
+
+
 def render_clickable_path(path_ids: list[str], indexes: dict[str, Any]) -> None:
-    # ADDED: clickable path using material names only
+    # REMOVED: boxed path buttons
+    # ADDED: inline breadcrumb links using material names only
     labels = get_path_labels_from_indexes(path_ids, indexes["nodes_by_id"])
     if not labels:
         return
 
-    st.caption("Current path")
-    cols = st.columns(len(labels))
+    st.caption("Path")
+    parts: list[str] = []
     for i, label in enumerate(labels):
-        if cols[i].button(label, key=f"path_btn_{i}", use_container_width=True):
-            st.session_state.path_ids = path_ids[: i + 1]
-            st.rerun()
+        safe_label = html_escape(label)
+        parts.append(f'<a href="?crumb={i}" target="_self">{safe_label}</a>')
+
+    st.markdown(
+        f'<div class="crumbs">{"<span class=\\"crumb-sep\\">›</span>".join(parts)}</div>',
+        unsafe_allow_html=True,
+    )
 
 
+def html_escape(value: str) -> str:
+    return (
+        value.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&#039;")
+    )
+
+
+# -----------------------------
+# UI rendering
+# -----------------------------
 def render_material_node(
     node: dict[str, Any],
     indexes: dict[str, Any],
@@ -425,6 +488,9 @@ if "search_feedback" not in st.session_state:
     st.session_state.search_feedback = ""
 
 
+# ADDED: handle breadcrumb click before the rest of the app renders
+handle_breadcrumb_click()
+
 st.title("Material Ontology Explorer")
 
 
@@ -434,26 +500,11 @@ st.title("Material Ontology Explorer")
 with st.sidebar:
     st.header("Navigation")
 
-    roots = get_root_nodes()
-    if not roots:
-        st.error("No Material nodes in database.")
-        st.stop()
-
-    root_map = {r["id"]: r["label"] for r in roots}
-    root_options = [None] + list(root_map.keys())
-    current_root = st.session_state.path_ids[0] if st.session_state.path_ids else None
-
-    root_pick = st.selectbox(
-        "Root",
-        root_options,
-        index=root_options.index(current_root) if current_root in root_options else 0,
-        format_func=lambda x: "— select —" if x is None else root_map[x],
-    )
-
-    # ADDED: search bar is always visible
+    # REMOVED: Root dropdown entirely
+    # ADDED: Search is now the first control at the top-left
     with st.form("global_material_search", clear_on_submit=False):
         search_query = st.text_input(
-            "Find material",
+            "Search",
             placeholder="Search by name, id, or code",
         )
         search_submitted = st.form_submit_button("Search", use_container_width=True)
@@ -470,27 +521,21 @@ with st.sidebar:
     if st.session_state.search_feedback:
         st.caption(st.session_state.search_feedback)
 
-    if root_pick is None:
-        # ADDED: root can still be manually chosen
-        # REMOVED: old sidebar level-1/2/deeper dropdown chain
-        if not st.session_state.path_ids:
-            st.session_state.root_indexes = None
-            st.caption("Select a root or search for a material.")
-        else:
-            root_pick = st.session_state.path_ids[0]
+    # ADDED: default to the first level-0 node so the center still has content with no search yet
+    if not st.session_state.path_ids:
+        roots = get_root_nodes()
+        if not roots:
+            st.error("No Material nodes in database.")
+            st.stop()
+        st.session_state.path_ids = [roots[0]["id"]]
 
-    if root_pick is not None:
-        root_rows = fetch_root_subtree(root_pick)
-        indexes = build_subtree_indexes(root_rows, root_pick)
-        st.session_state.root_indexes = indexes
+    root_id = st.session_state.path_ids[0]
+    root_rows = fetch_root_subtree(root_id)
+    indexes = build_subtree_indexes(root_rows, root_id)
+    st.session_state.root_indexes = indexes
 
-        if not st.session_state.path_ids or st.session_state.path_ids[0] != root_pick:
-            st.session_state.path_ids = [root_pick]
-
-        st.caption(f"Materials under root: {len(indexes['nodes_by_id'])}")
-
-        # ADDED: clickable path can appear after level 0 is fetched
-        render_clickable_path(st.session_state.path_ids, indexes)
+    # ADDED: clickable path appears after level 0 is fetched
+    render_clickable_path(st.session_state.path_ids, indexes)
 
     st.divider()
     st.subheader("Bill of materials")
@@ -519,7 +564,7 @@ with st.sidebar:
 # Current selection
 # -----------------------------
 if not st.session_state.path_ids or not st.session_state.root_indexes:
-    st.info("Select a root in the sidebar or search for a material.")
+    st.info("Search for a material.")
     st.stop()
 
 indexes = st.session_state.root_indexes
