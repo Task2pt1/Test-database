@@ -1,8 +1,10 @@
-# streamlitUI.py — Material Ontology Explorer (full extraction)
+# streamlitUI.py
+# Neo4j -> cached level-0 subtree fetch -> Streamlit UI
 
 from __future__ import annotations
 
 import json
+from collections import defaultdict, deque
 from typing import Any
 
 import pandas as pd
@@ -14,7 +16,6 @@ st.set_page_config(page_title="Material Ontology Explorer", layout="wide")
 NODE_LABEL = "Material"
 CHILD_REL = "HAS_CHILD"
 
-# attribute blocks stored on Material nodes (JSON strings after upload)
 ATTR_BLOCKS = (
     "engineering",
     "activity",
@@ -31,6 +32,9 @@ ATTR_BLOCKS = (
 META_KEYS = {"name", "id", "code", "database", "vector", "placement"}
 
 
+# -----------------------------
+# Neo4j connection
+# -----------------------------
 @st.cache_resource
 def get_driver() -> Driver:
     return GraphDatabase.driver(
@@ -47,9 +51,9 @@ def run_query(query: str, params: dict[str, Any] | None = None) -> list[dict[str
         return [r.data() for r in session.run(query, params or {})]
 
 
-# -------------------------------------------------
-# Parse Neo4j properties → usable Python
-# -------------------------------------------------
+# -----------------------------
+# Property parsing
+# -----------------------------
 def parse_stored(v: Any) -> Any:
     if isinstance(v, str):
         s = v.strip()
@@ -66,7 +70,6 @@ def parse_props(props: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def flatten_leaves(obj: Any, prefix: str = "") -> list[dict[str, str]]:
-    """Every scalar measurement/value at any depth."""
     rows: list[dict[str, str]] = []
 
     if isinstance(obj, dict):
@@ -86,7 +89,6 @@ def flatten_leaves(obj: Any, prefix: str = "") -> list[dict[str, str]]:
 
 
 def extract_attribute_rows(props: dict[str, Any]) -> list[dict[str, str]]:
-    """All measurable / literal values on one Material node."""
     parsed = parse_props(props)
     rows: list[dict[str, str]] = []
 
@@ -95,7 +97,6 @@ def extract_attribute_rows(props: dict[str, Any]) -> list[dict[str, str]]:
             continue
         rows.extend(flatten_leaves(parsed[key], key))
 
-    # anything else stored on the node
     for k, v in parsed.items():
         if k in META_KEYS or k in ATTR_BLOCKS:
             continue
@@ -104,9 +105,18 @@ def extract_attribute_rows(props: dict[str, Any]) -> list[dict[str, str]]:
     return rows
 
 
-# -------------------------------------------------
-# Neo4j queries — ALWAYS fetch properties(n)
-# -------------------------------------------------
+def attrs_to_wide_row(attr_rows: list[dict[str, str]]) -> dict[str, str]:
+    return {r["attribute"]: r["value"] for r in attr_rows}
+
+
+def node_name(node: dict[str, Any]) -> str:
+    props = parse_props(node.get("props"))
+    return props.get("name") or node.get("label") or node.get("id") or "Unknown"
+
+
+# -----------------------------
+# Neo4j fetches
+# -----------------------------
 def get_root_nodes() -> list[dict[str, str]]:
     return run_query(
         f"""
@@ -118,74 +128,143 @@ def get_root_nodes() -> list[dict[str, str]]:
     )
 
 
-def get_node(material_id: str) -> dict[str, Any] | None:
-    rows = run_query(
-        f"""
-        MATCH (n:{NODE_LABEL} {{id: $id}})
-        RETURN n.id AS id, n.name AS label, properties(n) AS props
-        """,
-        {"id": material_id},
-    )
-    return rows[0] if rows else None
-
-
-def get_children(material_id: str) -> list[dict[str, Any]]:
-    """Direct submaterials WITH full properties."""
-    return run_query(
-        f"""
-        MATCH (:{NODE_LABEL} {{id: $id}})-[:{CHILD_REL}]->(c:{NODE_LABEL})
-        RETURN c.id AS id, c.name AS label, properties(c) AS props
-        ORDER BY label
-        """,
-        {"id": material_id},
-    )
-
-
-def get_subtree(material_id: str) -> list[dict[str, Any]]:
-    """This node + every descendant, with depth."""
+@st.cache_data(show_spinner=False)
+def fetch_root_subtree(root_id: str) -> list[dict[str, Any]]:
+    # ADDED: one cached fetch for the full level-0 subtree
+    # REMOVED: repeated lower-level database fetches while navigating under the same root
     return run_query(
         f"""
         MATCH (root:{NODE_LABEL} {{id: $root_id}})
         OPTIONAL MATCH p = (root)-[:{CHILD_REL}*0..]->(n:{NODE_LABEL})
-        WITH n, min(length(p)) AS depth
-        RETURN n.id AS id, n.name AS label, properties(n) AS props, depth
+        WITH root, n, min(length(p)) AS depth
+        OPTIONAL MATCH (parent:{NODE_LABEL})-[:{CHILD_REL}]->(n)
+        WHERE parent IS NULL
+           OR parent = root
+           OR (root)-[:{CHILD_REL}*1..]->(parent)
+        RETURN
+            n.id AS id,
+            n.name AS label,
+            properties(n) AS props,
+            depth,
+            head([x IN collect(parent.id) WHERE x IS NOT NULL]) AS parent_id
         ORDER BY depth, label
         """,
-        {"root_id": material_id},
+        {"root_id": root_id},
     )
 
 
-def get_breadcrumb_labels(path_ids: list[str]) -> list[str]:
-    if not path_ids:
+# -----------------------------
+# In-memory indexes
+# -----------------------------
+def build_subtree_indexes(rows: list[dict[str, Any]], root_id: str) -> dict[str, Any]:
+    # ADDED: in-memory indexes so UI reads from Python memory instead of re-querying Neo4j
+    nodes_by_id: dict[str, dict[str, Any]] = {}
+    children_by_parent: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    parent_by_id: dict[str, str | None] = {}
+    depth_by_id: dict[str, int] = {}
+
+    for row in rows:
+        node = {
+            "id": row["id"],
+            "label": row["label"],
+            "props": row["props"],
+            "depth": row["depth"],
+            "parent_id": row["parent_id"],
+        }
+        nodes_by_id[row["id"]] = node
+        parent_by_id[row["id"]] = row["parent_id"]
+        depth_by_id[row["id"]] = row["depth"]
+
+    for row in rows:
+        parent_id = row["parent_id"]
+        if parent_id is not None:
+            children_by_parent[parent_id].append(nodes_by_id[row["id"]])
+
+    for parent_id, children in children_by_parent.items():
+        children.sort(key=node_name)
+
+    descendants_by_id: dict[str, list[str]] = {}
+    for node_id in nodes_by_id:
+        out: list[str] = []
+        queue = deque(child["id"] for child in children_by_parent.get(node_id, []))
+        while queue:
+            current = queue.popleft()
+            out.append(current)
+            queue.extend(child["id"] for child in children_by_parent.get(current, []))
+        descendants_by_id[node_id] = out
+
+    root_node = nodes_by_id[root_id]
+    root_name = node_name(root_node)
+
+    return {
+        "root_id": root_id,
+        "root_name": root_name,
+        "rows": rows,
+        "nodes_by_id": nodes_by_id,
+        "children_by_parent": children_by_parent,
+        "parent_by_id": parent_by_id,
+        "depth_by_id": depth_by_id,
+        "descendants_by_id": descendants_by_id,
+    }
+
+
+def get_path_ids_from_indexes(node_id: str, parent_by_id: dict[str, str | None]) -> list[str]:
+    path: list[str] = []
+    current: str | None = node_id
+    while current is not None:
+        path.append(current)
+        current = parent_by_id.get(current)
+    path.reverse()
+    return path
+
+
+def get_path_labels_from_indexes(path_ids: list[str], nodes_by_id: dict[str, dict[str, Any]]) -> list[str]:
+    return [node_name(nodes_by_id[node_id]) for node_id in path_ids if node_id in nodes_by_id]
+
+
+def get_subtree_rows_from_indexes(node_id: str, indexes: dict[str, Any]) -> list[dict[str, Any]]:
+    # ADDED: subtree filtering in memory
+    ids = [node_id] + indexes["descendants_by_id"].get(node_id, [])
+    rows: list[dict[str, Any]] = []
+    for descendant_id in ids:
+        node = indexes["nodes_by_id"][descendant_id]
+        rows.append(
+            {
+                "id": node["id"],
+                "label": node["label"],
+                "props": node["props"],
+                "depth": node["depth"] - indexes["depth_by_id"][node_id],
+            }
+        )
+    rows.sort(key=lambda r: (r["depth"], node_name(r)))
+    return rows
+
+
+def search_nodes(query: str, indexes: dict[str, Any], limit: int = 10) -> list[dict[str, Any]]:
+    # ADDED: sidebar keyword search
+    # NOTE: user sees only material name, but search matches name/code/id
+    q = query.strip().lower()
+    if not q:
         return []
-    rows = run_query(
-        """
-        UNWIND $ids AS id
-        MATCH (n:Material {id: id})
-        RETURN id, n.name AS label
-        """,
-        {"ids": path_ids},
-    )
-    label_map = {r["id"]: r["label"] for r in rows}
-    return [label_map.get(i, i) for i in path_ids]
+
+    matches: list[dict[str, Any]] = []
+    for node in indexes["nodes_by_id"].values():
+        props = parse_props(node.get("props"))
+        searchable = (
+            str(props.get("name", "")).lower(),
+            str(props.get("code", "")).lower(),
+            str(props.get("id", node.get("id", ""))).lower(),
+        )
+        if any(q in value for value in searchable):
+            matches.append(node)
+
+    matches.sort(key=lambda n: (n.get("depth", 0), node_name(n)))
+    return matches[:limit]
 
 
-def get_ontology_category(material_id: str) -> str:
-    rows = run_query(
-        """
-        MATCH (m:Material {id: $id})
-        OPTIONAL MATCH (root:Material)-[:HAS_CHILD*]->(m)
-        WHERE NOT ()-[:HAS_CHILD]->(root)
-        WITH m, head(collect(root)) AS r
-        RETURN coalesce(r.name, m.name) AS category
-        """,
-        {"id": material_id},
-    )
-    return rows[0]["category"] if rows else "Unknown"
-def attrs_to_wide_row(attr_rows: list[dict[str, str]]) -> dict[str, str]:
-    return {r["attribute"]: r["value"] for r in attr_rows}
-
-
+# -----------------------------
+# BOM helpers
+# -----------------------------
 def is_in_bill(material_id: str) -> bool:
     for items in st.session_state.bom.values():
         if any(b["id"] == material_id for b in items):
@@ -193,15 +272,15 @@ def is_in_bill(material_id: str) -> bool:
     return False
 
 
-def add_to_bill(material_id: str, name: str, attr_rows: list[dict[str, str]]) -> None:
-    category = get_ontology_category(material_id)  # top root: Masonry, Cement, …
+def add_to_bill_from_node(node: dict[str, Any], category: str) -> None:
+    attr_rows = extract_attribute_rows(node.get("props") or {})
     entry = {
-        "id": material_id,
-        "name": name,
+        "id": node["id"],
+        "name": node_name(node),
         "values": attrs_to_wide_row(attr_rows),
     }
     st.session_state.bom.setdefault(category, [])
-    if not any(b["id"] == material_id for b in st.session_state.bom[category]):
+    if not any(b["id"] == node["id"] for b in st.session_state.bom[category]):
         st.session_state.bom[category].append(entry)
 
 
@@ -212,20 +291,40 @@ def remove_from_bill(material_id: str) -> None:
             del st.session_state.bom[cat]
 
 
-def on_bill_toggle(material_id: str, name: str, widget_key: str) -> None:
+def on_bill_toggle(material_id: str, widget_key: str) -> None:
+    # ADDED: BOM toggle now reads from the cached root subtree instead of re-querying Neo4j
+    indexes = st.session_state.get("root_indexes")
+    if not indexes:
+        return
+
     if st.session_state[widget_key]:
-        node = get_node(material_id)
+        node = indexes["nodes_by_id"].get(material_id)
         if node:
-            attr_rows = extract_attribute_rows(node.get("props") or {})
-            add_to_bill(material_id, name, attr_rows)
+            add_to_bill_from_node(node, indexes["root_name"])
     else:
         remove_from_bill(material_id)
 
-# -------------------------------------------------
-# UI: render one material + recurse into submaterials
-# -------------------------------------------------
+
+# -----------------------------
+# UI rendering
+# -----------------------------
+def render_clickable_path(path_ids: list[str], indexes: dict[str, Any]) -> None:
+    # ADDED: clickable material-name path in the sidebar
+    labels = get_path_labels_from_indexes(path_ids, indexes["nodes_by_id"])
+    if not labels:
+        return
+
+    st.caption("Current path")
+    cols = st.columns(len(labels))
+    for i, label in enumerate(labels):
+        if cols[i].button(label, key=f"path_btn_{i}", use_container_width=True):
+            st.session_state.path_ids = path_ids[: i + 1]
+            st.rerun()
+
+
 def render_material_node(
     node: dict[str, Any],
+    indexes: dict[str, Any],
     *,
     depth: int = 0,
     expanded: bool = False,
@@ -234,7 +333,7 @@ def render_material_node(
     props = parse_props(node.get("props"))
     name = props.get("name") or node.get("label") or node.get("id")
     attr_rows = extract_attribute_rows(node.get("props") or {})
-    children = get_children(node["id"])
+    children = indexes["children_by_parent"].get(node["id"], [])
 
     indent = "　" * depth
     title = f"{indent}{name}"
@@ -256,7 +355,7 @@ def render_material_node(
             value=is_in_bill(node["id"]),
             key=cb_key,
             on_change=on_bill_toggle,
-            args=(node["id"], name, cb_key),
+            args=(node["id"], cb_key),
         )
 
         if attr_rows:
@@ -288,26 +387,32 @@ def render_material_node(
             for i, child in enumerate(children):
                 render_material_node(
                     child,
+                    indexes,
                     depth=depth + 1,
                     expanded=False,
                     path=f"{path}_{i}",
                 )
 
-# -------------------------------------------------
+
+# -----------------------------
 # Session state
-# -------------------------------------------------
+# -----------------------------
 if "path_ids" not in st.session_state:
     st.session_state.path_ids = []
 
 if "bom" not in st.session_state:
     st.session_state.bom = {}
 
+if "root_indexes" not in st.session_state:
+    st.session_state.root_indexes = None
+
 
 st.title("Material Ontology Explorer")
 
-# -------------------------------------------------
-# Sidebar navigation (unchanged logic)
-# -------------------------------------------------
+
+# -----------------------------
+# Sidebar
+# -----------------------------
 with st.sidebar:
     st.header("Navigation")
 
@@ -317,48 +422,50 @@ with st.sidebar:
         st.stop()
 
     root_map = {r["id"]: r["label"] for r in roots}
+    root_options = [None] + list(root_map.keys())
+    current_root = st.session_state.path_ids[0] if st.session_state.path_ids else None
+
     root_pick = st.selectbox(
         "Root",
-        [None] + list(root_map.keys()),
+        root_options,
+        index=root_options.index(current_root) if current_root in root_options else 0,
         format_func=lambda x: "— select —" if x is None else root_map[x],
     )
 
     if root_pick is None:
         st.session_state.path_ids = []
+        st.session_state.root_indexes = None
     else:
+        # ADDED: fetch happens only when level 0 changes
+        # REMOVED: sidebar level 1 / level 2 / deeper dropdown chain
+        root_rows = fetch_root_subtree(root_pick)
+        indexes = build_subtree_indexes(root_rows, root_pick)
+        st.session_state.root_indexes = indexes
+
         if not st.session_state.path_ids or st.session_state.path_ids[0] != root_pick:
             st.session_state.path_ids = [root_pick]
 
-        level = 1
-        while True:
-            kids = get_children(st.session_state.path_ids[level - 1])
-            if not kids:
-                break
-            kid_map = {c["id"]: c["label"] for c in kids}
-            cur = (
-                st.session_state.path_ids[level]
-                if level < len(st.session_state.path_ids)
-                else None
-            )
-            options = [None] + list(kid_map.keys())
-            pick = st.selectbox(
-                f"Level {level + 1}",
-                options,
-                index=options.index(cur) if cur in kid_map else 0,
-                format_func=lambda x: "— stop —" if x is None else kid_map[x],
-                key=f"lvl_{level}",
-            )
-            if pick is None:
-                st.session_state.path_ids = st.session_state.path_ids[:level]
-                break
-            if level < len(st.session_state.path_ids):
-                st.session_state.path_ids = st.session_state.path_ids[:level] + [pick]
-            else:
-                st.session_state.path_ids.append(pick)
-            level += 1
+        st.caption(f"Materials under root: {len(indexes['nodes_by_id'])}")
 
-    if st.session_state.path_ids:
-        st.caption(" → ".join(get_breadcrumb_labels(st.session_state.path_ids)))
+        search_query = st.text_input("Find material", placeholder="Search by material name")
+        matches = search_nodes(search_query, indexes)
+
+        if matches:
+            st.caption("Matches")
+            for match in matches:
+                # ADDED: only show material name to the user
+                if st.button(
+                    node_name(match),
+                    key=f"search_match_{match['id']}",
+                    use_container_width=True,
+                ):
+                    st.session_state.path_ids = get_path_ids_from_indexes(
+                        match["id"],
+                        indexes["parent_by_id"],
+                    )
+                    st.rerun()
+
+        render_clickable_path(st.session_state.path_ids, indexes)
 
     st.divider()
     st.subheader("Bill of materials")
@@ -377,36 +484,40 @@ with st.sidebar:
                     if len(vals) > 3:
                         preview += f" … (+{len(vals) - 3} more)"
                     st.caption(preview)
+
     if st.button("Clear bill", use_container_width=True):
         st.session_state.bom = {}
         st.rerun()
 
 
-if not st.session_state.path_ids:
+# -----------------------------
+# Current selection
+# -----------------------------
+if not st.session_state.path_ids or not st.session_state.root_indexes:
     st.info("Select a root in the sidebar.")
     st.stop()
 
-
+indexes = st.session_state.root_indexes
 current_id = st.session_state.path_ids[-1]
-node = get_node(current_id)
+node = indexes["nodes_by_id"].get(current_id)
+
 if not node:
     st.error("Could not load this material.")
     st.stop()
 
-props = parse_props(node["props"])
-name = props.get("name") or node["label"]
-direct_children = get_children(current_id)
-subtree = get_subtree(current_id)
+direct_children = indexes["children_by_parent"].get(current_id, [])
+subtree = get_subtree_rows_from_indexes(current_id, indexes)
 
-st.header(name)
+st.header(node_name(node))
 st.caption(
     f"Direct submaterials: **{len(direct_children)}** · "
     f"Total nodes in subtree: **{len(subtree)}**"
 )
 
-# -------------------------------------------------
-# MAIN EXTRACTION VIEWS
-# -------------------------------------------------
+
+# -----------------------------
+# Main tabs
+# -----------------------------
 tab_tree, tab_table, tab_bom = st.tabs(
     ["Submaterial tree + values", "Flat extraction table", "Pick for BOM"]
 )
@@ -418,7 +529,7 @@ with tab_tree:
         "Submaterials = HAS_CHILD edges. "
         "Values = properties on that node (engineering, activity, notes, …)."
     )
-    render_material_node(node, depth=0, expanded=True)
+    render_material_node(node, indexes, depth=0, expanded=True)
 
 with tab_table:
     st.subheader("All materials under this node — every extracted value")
@@ -452,7 +563,7 @@ with tab_table:
         st.download_button(
             "Download extracted values (CSV)",
             df.drop(columns=["_id"]).to_csv(index=False),
-            file_name=f"{name}_extract.csv",
+            file_name=f"{node_name(node)}_extract.csv",
             mime="text/csv",
         )
 
@@ -467,11 +578,11 @@ with tab_bom:
     if scope == "Children here":
         items = direct_children
     else:
-        items = [r for r in subtree if r["depth"] > 0]
+        item_ids = indexes["descendants_by_id"].get(current_id, [])
+        items = [indexes["nodes_by_id"][item_id] for item_id in item_ids]
 
     table_rows = []
     for x in items:
-        p = parse_props(x["props"])
         attr_rows = extract_attribute_rows(x["props"] or {})
         summary = "; ".join(
             f"{r['attribute']}={r['value']}" for r in attr_rows[:4]
@@ -482,7 +593,7 @@ with tab_bom:
         table_rows.append(
             {
                 "bill": False,
-                "name": p.get("name") or x["label"],
+                "name": node_name(x),
                 "values": summary or "—",
                 "_id": x["id"],
             }
@@ -506,9 +617,6 @@ with tab_bom:
                 if not row.get("bill"):
                     continue
                 mid = df.loc[i, "_id"]
-                mat_name = row["name"]
-                cat = get_ontology_category(mid)
-                st.session_state.bom.setdefault(cat, [])
-                if not any(b["id"] == mid for b in st.session_state.bom[cat]):
-                    st.session_state.bom[cat].append({"id": mid, "name": mat_name})
+                selected_node = indexes["nodes_by_id"][mid]
+                add_to_bill_from_node(selected_node, indexes["root_name"])
             st.rerun()
