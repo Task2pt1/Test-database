@@ -38,8 +38,11 @@ META_KEYS = {"name", "id", "code", "database", "vector", "placement"}
 @st.cache_resource
 def get_driver() -> Driver:
     return GraphDatabase.driver(
-        st.secrets["NEO4J_URI"],
-        auth=(st.secrets["NEO4J_USERNAME"], st.secrets["NEO4J_PASSWORD"]),
+        st.secrets["NEO4J_URI"].strip(),
+        auth=(
+            st.secrets["NEO4J_USERNAME"].strip(),
+            st.secrets["NEO4J_PASSWORD"].strip(),
+        ),
     )
 
 
@@ -49,6 +52,21 @@ driver = get_driver()
 def run_query(query: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     with driver.session() as session:
         return [r.data() for r in session.run(query, params or {})]
+
+
+# -----------------------------
+# Keepalive ping
+# -----------------------------
+@st.cache_data(ttl=70 * 60 * 60, show_spinner=False)
+def keep_neo4j_awake() -> int:
+    # ADDED: lightweight keepalive ping, runs at most once every 70 hours per app cache window
+    # NOTE: this is best-effort only; it runs when the app is visited, not as a true background scheduler
+    rows = run_query("RETURN 1 AS ok")
+    return int(rows[0]["ok"]) if rows else 0
+
+
+# ADDED: trigger the keepalive early in the app lifecycle
+keepalive_ok = keep_neo4j_awake()
 
 
 # -----------------------------
@@ -180,7 +198,7 @@ def build_subtree_indexes(rows: list[dict[str, Any]], root_id: str) -> dict[str,
         if parent_id is not None:
             children_by_parent[parent_id].append(nodes_by_id[row["id"]])
 
-    for parent_id, children in children_by_parent.items():
+    for _, children in children_by_parent.items():
         children.sort(key=node_name)
 
     descendants_by_id: dict[str, list[str]] = {}
@@ -218,7 +236,10 @@ def get_path_ids_from_indexes(node_id: str, parent_by_id: dict[str, str | None])
     return path
 
 
-def get_path_labels_from_indexes(path_ids: list[str], nodes_by_id: dict[str, dict[str, Any]]) -> list[str]:
+def get_path_labels_from_indexes(
+    path_ids: list[str],
+    nodes_by_id: dict[str, dict[str, Any]],
+) -> list[str]:
     return [node_name(nodes_by_id[node_id]) for node_id in path_ids if node_id in nodes_by_id]
 
 
@@ -226,6 +247,7 @@ def get_subtree_rows_from_indexes(node_id: str, indexes: dict[str, Any]) -> list
     # ADDED: subtree filtering in memory
     ids = [node_id] + indexes["descendants_by_id"].get(node_id, [])
     rows: list[dict[str, Any]] = []
+
     for descendant_id in ids:
         node = indexes["nodes_by_id"][descendant_id]
         rows.append(
@@ -236,6 +258,7 @@ def get_subtree_rows_from_indexes(node_id: str, indexes: dict[str, Any]) -> list
                 "depth": node["depth"] - indexes["depth_by_id"][node_id],
             }
         )
+
     rows.sort(key=lambda r: (r["depth"], node_name(r)))
     return rows
 
@@ -416,6 +439,9 @@ st.title("Material Ontology Explorer")
 with st.sidebar:
     st.header("Navigation")
 
+    # ADDED: small keepalive status indicator
+    st.caption(f"Neo4j keepalive: {'ok' if keepalive_ok == 1 else 'unknown'}")
+
     roots = get_root_nodes()
     if not roots:
         st.error("No Material nodes in database.")
@@ -447,8 +473,15 @@ with st.sidebar:
 
         st.caption(f"Materials under root: {len(indexes['nodes_by_id'])}")
 
-        search_query = st.text_input("Find material", placeholder="Search by material name")
+        # ADDED: actual sidebar search bar
+        search_query = st.text_input(
+            "Find material",
+            placeholder="Search by material name",
+        )
         matches = search_nodes(search_query, indexes)
+
+        if search_query and not matches:
+            st.caption("No matches.")
 
         if matches:
             st.caption("Matches")
@@ -465,6 +498,7 @@ with st.sidebar:
                     )
                     st.rerun()
 
+        # ADDED: clickable current path made of material names only
         render_clickable_path(st.session_state.path_ids, indexes)
 
     st.divider()
