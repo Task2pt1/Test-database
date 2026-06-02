@@ -1,5 +1,5 @@
 # streamlitUI.py
-# Neo4j -> cached level-0 subtree fetch -> Streamlit UI
+# Neo4j -> global search + cached level-0 subtree fetch -> Streamlit UI
 
 from __future__ import annotations
 
@@ -52,21 +52,6 @@ driver = get_driver()
 def run_query(query: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     with driver.session() as session:
         return [r.data() for r in session.run(query, params or {})]
-
-
-# -----------------------------
-# Keepalive ping
-# -----------------------------
-@st.cache_data(ttl=70 * 60 * 60, show_spinner=False)
-def keep_neo4j_awake() -> int:
-    # ADDED: lightweight keepalive ping, runs at most once every 70 hours per app cache window
-    # NOTE: this is best-effort only; it runs when the app is visited, not as a true background scheduler
-    rows = run_query("RETURN 1 AS ok")
-    return int(rows[0]["ok"]) if rows else 0
-
-
-# ADDED: trigger the keepalive early in the app lifecycle
-keepalive_ok = keep_neo4j_awake()
 
 
 # -----------------------------
@@ -148,8 +133,7 @@ def get_root_nodes() -> list[dict[str, str]]:
 
 @st.cache_data(show_spinner=False)
 def fetch_root_subtree(root_id: str) -> list[dict[str, Any]]:
-    # ADDED: one cached fetch for the full level-0 subtree
-    # REMOVED: repeated lower-level database fetches while navigating under the same root
+    # ADDED: one cached fetch for the full selected level-0 subtree
     return run_query(
         f"""
         MATCH (root:{NODE_LABEL} {{id: $root_id}})
@@ -171,11 +155,53 @@ def fetch_root_subtree(root_id: str) -> list[dict[str, Any]]:
     )
 
 
+def search_material_path(query: str) -> list[str]:
+    # ADDED: global Neo4j search by your properties name / id / code
+    # REMOVED: upper-left search result list UI
+    q = query.strip().lower()
+    if not q:
+        return []
+
+    rows = run_query(
+        f"""
+        MATCH (n:{NODE_LABEL})
+        WHERE toLower(coalesce(n.name, '')) CONTAINS $q
+           OR toLower(coalesce(n.id, '')) CONTAINS $q
+           OR toLower(coalesce(n.code, '')) CONTAINS $q
+
+        OPTIONAL MATCH p = (root:{NODE_LABEL})-[:{CHILD_REL}*0..]->(n)
+        WHERE NOT ()-[:{CHILD_REL}]->(root)
+
+        WITH n, p,
+             CASE
+                 WHEN toLower(coalesce(n.name, '')) = $q THEN 0
+                 WHEN toLower(coalesce(n.id, '')) = $q THEN 1
+                 WHEN toLower(coalesce(n.code, '')) = $q THEN 2
+                 WHEN toLower(coalesce(n.name, '')) STARTS WITH $q THEN 3
+                 WHEN toLower(coalesce(n.id, '')) STARTS WITH $q THEN 4
+                 WHEN toLower(coalesce(n.code, '')) STARTS WITH $q THEN 5
+                 ELSE 6
+             END AS rank_score
+
+        WITH n, p, rank_score
+        ORDER BY rank_score, length(p), n.name
+        LIMIT 1
+
+        RETURN [x IN nodes(p) | x.id] AS path_ids
+        """,
+        {"q": q},
+    )
+
+    if not rows:
+        return []
+
+    return rows[0].get("path_ids") or []
+
+
 # -----------------------------
 # In-memory indexes
 # -----------------------------
 def build_subtree_indexes(rows: list[dict[str, Any]], root_id: str) -> dict[str, Any]:
-    # ADDED: in-memory indexes so UI reads from Python memory instead of re-querying Neo4j
     nodes_by_id: dict[str, dict[str, Any]] = {}
     children_by_parent: dict[str, list[dict[str, Any]]] = defaultdict(list)
     parent_by_id: dict[str, str | None] = {}
@@ -226,16 +252,6 @@ def build_subtree_indexes(rows: list[dict[str, Any]], root_id: str) -> dict[str,
     }
 
 
-def get_path_ids_from_indexes(node_id: str, parent_by_id: dict[str, str | None]) -> list[str]:
-    path: list[str] = []
-    current: str | None = node_id
-    while current is not None:
-        path.append(current)
-        current = parent_by_id.get(current)
-    path.reverse()
-    return path
-
-
 def get_path_labels_from_indexes(
     path_ids: list[str],
     nodes_by_id: dict[str, dict[str, Any]],
@@ -244,7 +260,6 @@ def get_path_labels_from_indexes(
 
 
 def get_subtree_rows_from_indexes(node_id: str, indexes: dict[str, Any]) -> list[dict[str, Any]]:
-    # ADDED: subtree filtering in memory
     ids = [node_id] + indexes["descendants_by_id"].get(node_id, [])
     rows: list[dict[str, Any]] = []
 
@@ -261,28 +276,6 @@ def get_subtree_rows_from_indexes(node_id: str, indexes: dict[str, Any]) -> list
 
     rows.sort(key=lambda r: (r["depth"], node_name(r)))
     return rows
-
-
-def search_nodes(query: str, indexes: dict[str, Any], limit: int = 10) -> list[dict[str, Any]]:
-    # ADDED: sidebar keyword search
-    # NOTE: user sees only material name, but search matches name/code/id
-    q = query.strip().lower()
-    if not q:
-        return []
-
-    matches: list[dict[str, Any]] = []
-    for node in indexes["nodes_by_id"].values():
-        props = parse_props(node.get("props"))
-        searchable = (
-            str(props.get("name", "")).lower(),
-            str(props.get("code", "")).lower(),
-            str(props.get("id", node.get("id", ""))).lower(),
-        )
-        if any(q in value for value in searchable):
-            matches.append(node)
-
-    matches.sort(key=lambda n: (n.get("depth", 0), node_name(n)))
-    return matches[:limit]
 
 
 # -----------------------------
@@ -315,7 +308,6 @@ def remove_from_bill(material_id: str) -> None:
 
 
 def on_bill_toggle(material_id: str, widget_key: str) -> None:
-    # ADDED: BOM toggle now reads from the cached root subtree instead of re-querying Neo4j
     indexes = st.session_state.get("root_indexes")
     if not indexes:
         return
@@ -332,7 +324,7 @@ def on_bill_toggle(material_id: str, widget_key: str) -> None:
 # UI rendering
 # -----------------------------
 def render_clickable_path(path_ids: list[str], indexes: dict[str, Any]) -> None:
-    # ADDED: clickable material-name path in the sidebar
+    # ADDED: clickable path using material names only
     labels = get_path_labels_from_indexes(path_ids, indexes["nodes_by_id"])
     if not labels:
         return
@@ -429,6 +421,9 @@ if "bom" not in st.session_state:
 if "root_indexes" not in st.session_state:
     st.session_state.root_indexes = None
 
+if "search_feedback" not in st.session_state:
+    st.session_state.search_feedback = ""
+
 
 st.title("Material Ontology Explorer")
 
@@ -438,9 +433,6 @@ st.title("Material Ontology Explorer")
 # -----------------------------
 with st.sidebar:
     st.header("Navigation")
-
-    # ADDED: small keepalive status indicator
-    st.caption(f"Neo4j keepalive: {'ok' if keepalive_ok == 1 else 'unknown'}")
 
     roots = get_root_nodes()
     if not roots:
@@ -458,12 +450,36 @@ with st.sidebar:
         format_func=lambda x: "— select —" if x is None else root_map[x],
     )
 
+    # ADDED: search bar is always visible
+    with st.form("global_material_search", clear_on_submit=False):
+        search_query = st.text_input(
+            "Find material",
+            placeholder="Search by name, id, or code",
+        )
+        search_submitted = st.form_submit_button("Search", use_container_width=True)
+
+    if search_submitted:
+        found_path_ids = search_material_path(search_query)
+        if found_path_ids:
+            st.session_state.path_ids = found_path_ids
+            st.session_state.search_feedback = ""
+            st.rerun()
+        else:
+            st.session_state.search_feedback = "No material found."
+
+    if st.session_state.search_feedback:
+        st.caption(st.session_state.search_feedback)
+
     if root_pick is None:
-        st.session_state.path_ids = []
-        st.session_state.root_indexes = None
-    else:
-        # ADDED: fetch happens only when level 0 changes
-        # REMOVED: sidebar level 1 / level 2 / deeper dropdown chain
+        # ADDED: root can still be manually chosen
+        # REMOVED: old sidebar level-1/2/deeper dropdown chain
+        if not st.session_state.path_ids:
+            st.session_state.root_indexes = None
+            st.caption("Select a root or search for a material.")
+        else:
+            root_pick = st.session_state.path_ids[0]
+
+    if root_pick is not None:
         root_rows = fetch_root_subtree(root_pick)
         indexes = build_subtree_indexes(root_rows, root_pick)
         st.session_state.root_indexes = indexes
@@ -473,32 +489,7 @@ with st.sidebar:
 
         st.caption(f"Materials under root: {len(indexes['nodes_by_id'])}")
 
-        # ADDED: actual sidebar search bar
-        search_query = st.text_input(
-            "Find material",
-            placeholder="Search by material name",
-        )
-        matches = search_nodes(search_query, indexes)
-
-        if search_query and not matches:
-            st.caption("No matches.")
-
-        if matches:
-            st.caption("Matches")
-            for match in matches:
-                # ADDED: only show material name to the user
-                if st.button(
-                    node_name(match),
-                    key=f"search_match_{match['id']}",
-                    use_container_width=True,
-                ):
-                    st.session_state.path_ids = get_path_ids_from_indexes(
-                        match["id"],
-                        indexes["parent_by_id"],
-                    )
-                    st.rerun()
-
-        # ADDED: clickable current path made of material names only
+        # ADDED: clickable path can appear after level 0 is fetched
         render_clickable_path(st.session_state.path_ids, indexes)
 
     st.divider()
@@ -528,7 +519,7 @@ with st.sidebar:
 # Current selection
 # -----------------------------
 if not st.session_state.path_ids or not st.session_state.root_indexes:
-    st.info("Select a root in the sidebar.")
+    st.info("Select a root in the sidebar or search for a material.")
     st.stop()
 
 indexes = st.session_state.root_indexes
