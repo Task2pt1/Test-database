@@ -2,7 +2,7 @@
 # Neo4j -> global search + cached subtree fetch -> Streamlit UI
 
 # =============================================================================
-# SECTION 1 — SETUP (imports, page config, constants)
+# SECTION 1 — SETUP
 # =============================================================================
 from __future__ import annotations
 
@@ -34,9 +34,11 @@ ATTR_BLOCKS = (
 
 META_KEYS = {"name", "id", "code", "database", "vector", "placement"}
 
+FILTER_ATTR_OPTIONS = ["(no filter)", "(any values)", *ATTR_BLOCKS]
+
 
 # =============================================================================
-# SECTION 2 — CSS (breadcrumb + stack panel styling)
+# SECTION 2 — CSS
 # =============================================================================
 st.markdown(
     """
@@ -59,11 +61,6 @@ st.markdown(
     .crumb-sep {
         opacity: 0.6;
         margin: 0 0.25rem;
-    }
-    .stack-panel {
-        border-left: 3px solid rgba(250, 250, 250, 0.15);
-        padding-left: 0.75rem;
-        margin-bottom: 0.75rem;
     }
     </style>
     """,
@@ -94,7 +91,7 @@ def run_query(query: str, params: dict[str, Any] | None = None) -> list[dict[str
 
 
 # =============================================================================
-# SECTION 4 — PROPERTY PARSING (JSON props -> flat attribute rows)
+# SECTION 4 — PROPERTY PARSING
 # =============================================================================
 def parse_stored(v: Any) -> Any:
     if isinstance(v, str):
@@ -157,7 +154,7 @@ def node_name(node: dict[str, Any]) -> str:
 
 
 # =============================================================================
-# SECTION 5 — NEO4J FETCHES (roots, subtree, search)
+# SECTION 5 — NEO4J FETCHES
 # =============================================================================
 def get_root_nodes() -> list[dict[str, str]]:
     return run_query(
@@ -235,7 +232,7 @@ def search_material_path(query: str) -> list[str]:
 
 
 # =============================================================================
-# SECTION 6 — IN-MEMORY INDEXES (fast parent/child lookup)
+# SECTION 6 — IN-MEMORY INDEXES
 # =============================================================================
 def build_subtree_indexes(rows: list[dict[str, Any]], root_id: str) -> dict[str, Any]:
     nodes_by_id: dict[str, dict[str, Any]] = {}
@@ -315,56 +312,35 @@ def get_subtree_rows_from_indexes(node_id: str, indexes: dict[str, Any]) -> list
 
 
 # =============================================================================
-# SECTION 7 — LCIA + COMPACT DISPLAY HELPERS
+# SECTION 7 — FILTER, COMPARE, AND CURRENT-NODE DISPLAY
 # =============================================================================
-def has_lcia(props: dict[str, Any] | None) -> bool:
+def has_attr_block(props: dict[str, Any] | None, block: str) -> bool:
     parsed = parse_props(props)
-    lcia = parsed.get("lcia")
-    return lcia not in (None, "", {}, [])
+    val = parsed.get(block)
+    return val not in (None, "", {}, [])
 
 
-def filter_nodes_lcia(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    if not st.session_state.filter_lcia_only:
-        return nodes
-    return [n for n in nodes if has_lcia(n.get("props"))]
+def has_any_attribute_values(props: dict[str, Any] | None) -> bool:
+    return bool(extract_attribute_rows(props or {}))
+
+
+def node_passes_submaterial_filter(node: dict[str, Any]) -> bool:
+    choice = st.session_state.filter_attr_block
+    if choice == "(no filter)":
+        return True
+    if choice == "(any values)":
+        return has_any_attribute_values(node.get("props"))
+    return has_attr_block(node.get("props"), choice)
+
+
+def filter_nodes_by_attr(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [n for n in nodes if node_passes_submaterial_filter(n)]
 
 
 def attr_rows_for_display(node: dict[str, Any]) -> list[dict[str, str]]:
-    rows = extract_attribute_rows(node.get("props") or {})
-    if st.session_state.filter_lcia_only:
-        rows = [
-            r
-            for r in rows
-            if r["attribute"] == "lcia" or r["attribute"].startswith("lcia.")
-        ]
-    return rows
+    return extract_attribute_rows(node.get("props") or {})
 
 
-def lcia_field_map(node: dict[str, Any]) -> dict[str, str]:
-    rows = extract_attribute_rows(node.get("props") or {})
-    return {
-        r["attribute"]: r["value"]
-        for r in rows
-        if r["attribute"] == "lcia" or r["attribute"].startswith("lcia.")
-    }
-
-
-def render_compact_attributes(node: dict[str, Any], *, current: bool = False) -> None:
-    name = node_name(node)
-    rows = attr_rows_for_display(node)
-    tag = " ← you are here" if current else ""
-    st.markdown(f"**{name}**{tag}")
-    if not rows:
-        if current:
-            st.caption("No attribute values on this level — pick a submaterial below.")
-        return
-    df = pd.DataFrame(rows)
-    st.dataframe(
-        df,
-        use_container_width=True,
-        hide_index=True,
-        height=min(38 + 28 * len(rows), 220),
-    )
 def part_compare_key(material_id: str, attribute: str) -> str:
     return f"{material_id}|{attribute}"
 
@@ -397,11 +373,7 @@ def remove_part_from_compare(key: str) -> None:
     ]
 
 
-def add_block_to_compare(
-    node: dict[str, Any],
-    block_key: str,
-) -> None:
-    """Add every leaf field under a structured block (lcia, activity, …)."""
+def add_block_to_compare(node: dict[str, Any], block_key: str) -> None:
     props = parse_props(node.get("props"))
     if block_key not in props:
         return
@@ -424,8 +396,89 @@ def render_parts_compare(parts: list[dict[str, str]]) -> None:
             st.write(part["value"])
 
 
+def render_current_node_detail(
+    node: dict[str, Any],
+    indexes: dict[str, Any],
+    *,
+    level_index: int = 0,
+) -> None:
+    props = parse_props(node.get("props"))
+    name = node_name(node)
+    attr_rows = attr_rows_for_display(node)
+    children = indexes["children_by_parent"].get(node["id"], [])
+    children = filter_nodes_by_attr(children)
+    choice = st.session_state.filter_attr_block
+
+    if attr_rows:
+        st.markdown("**Attribute values**")
+        for r in attr_rows:
+            c1, c2 = st.columns([6, 1])
+            with c1:
+                st.text(f"{r['attribute']}: {r['value']}")
+            with c2:
+                if is_part_in_compare(node["id"], r["attribute"]):
+                    if st.button("−", key=f"rm_{node['id']}_{r['attribute']}"):
+                        remove_part_from_compare(
+                            part_compare_key(node["id"], r["attribute"])
+                        )
+                        st.rerun()
+                else:
+                    if st.button("+", key=f"add_{node['id']}_{r['attribute']}"):
+                        add_part_to_compare(
+                            node["id"], name, r["attribute"], r["value"]
+                        )
+                        st.rerun()
+    else:
+        st.caption("No attribute values on this level.")
+
+    for key in ATTR_BLOCKS:
+        if key in props and props[key] not in (None, "", {}, []):
+            with st.expander(
+                f"{key} (structured)",
+                key=f"detail_{node['id']}_{level_index}_{key}",
+            ):
+                val = props[key]
+                if isinstance(val, (dict, list)):
+                    st.json(val)
+                else:
+                    st.write(val)
+                if st.button(
+                    f"Add all {key} fields to compare",
+                    key=f"addblock_{node['id']}_{level_index}_{key}",
+                ):
+                    add_block_to_compare(node, key)
+                    st.rerun()
+
+    cb_key = f"bill_{node['id']}_path_{level_index}"
+    st.checkbox(
+        "Add to bill of materials",
+        value=is_in_bill(node["id"]),
+        key=cb_key,
+        on_change=on_bill_toggle,
+        args=(node["id"], cb_key),
+    )
+
+    st.markdown("**Submaterials**")
+    if not children:
+        st.caption("No submaterials here.")
+    else:
+        for child in children:
+            cname = node_name(child)
+            n_child = len(indexes["children_by_parent"].get(child["id"], []))
+            suffix = f" ({n_child} submaterials)" if n_child else ""
+            if choice not in ("(no filter)", "(any values)") and has_attr_block(
+                child.get("props"), choice
+            ):
+                suffix += f" · {choice}"
+            st.markdown(
+                f'<a href="?nav={child["id"]}" target="_self">{html_escape(cname)}</a>'
+                f"{html_escape(suffix)}",
+                unsafe_allow_html=True,
+            )
+
+
 # =============================================================================
-# SECTION 8 — BOM HELPERS (bill of materials; id kept silently for export)
+# SECTION 8 — BOM HELPERS
 # =============================================================================
 def is_in_bill(material_id: str) -> bool:
     for items in st.session_state.bom.values():
@@ -467,7 +520,7 @@ def on_bill_toggle(material_id: str, widget_key: str) -> None:
 
 
 # =============================================================================
-# SECTION 9 — NAVIGATION (breadcrumb + drill-down links)
+# SECTION 9 — NAVIGATION
 # =============================================================================
 def handle_breadcrumb_click() -> None:
     crumb_index = st.query_params.get("crumb")
@@ -533,7 +586,7 @@ def html_escape(value: str) -> str:
 
 
 # =============================================================================
-# SECTION 10 — SESSION STATE (runs once per browser session)
+# SECTION 10 — SESSION STATE
 # =============================================================================
 if "has_searched" not in st.session_state:
     st.session_state.has_searched = False
@@ -544,17 +597,18 @@ if "has_searched" not in st.session_state:
 if "bom" not in st.session_state:
     st.session_state.bom = {}
 
-if "filter_lcia_only" not in st.session_state:
-    st.session_state.filter_lcia_only = False
+if "filter_attr_block" not in st.session_state:
+    st.session_state.filter_attr_block = "(no filter)"
 
 if "compare_parts" not in st.session_state:
     st.session_state.compare_parts = []
+
 if "show_compare_view" not in st.session_state:
     st.session_state.show_compare_view = False
 
 
 # =============================================================================
-# SECTION 11 — APP STARTUP (handle link clicks, then draw title)
+# SECTION 11 — APP STARTUP
 # =============================================================================
 handle_breadcrumb_click()
 handle_child_nav_click()
@@ -563,7 +617,7 @@ st.title("Material Ontology Explorer")
 
 
 # =============================================================================
-# SECTION 12 — SIDEBAR (search, filters, path, bill of materials)
+# SECTION 12 — SIDEBAR
 # =============================================================================
 with st.sidebar:
     st.header("Navigation")
@@ -589,14 +643,29 @@ with st.sidebar:
     if st.session_state.search_feedback:
         st.caption(st.session_state.search_feedback)
 
-    st.session_state.filter_lcia_only = st.checkbox(
-        "Only show materials with LCIA",
-        value=st.session_state.filter_lcia_only,
+    st.session_state.filter_attr_block = st.selectbox(
+        "Only show submaterials with:",
+        options=FILTER_ATTR_OPTIONS,
+        index=FILTER_ATTR_OPTIONS.index(st.session_state.filter_attr_block)
+        if st.session_state.filter_attr_block in FILTER_ATTR_OPTIONS
+        else 0,
     )
-    st.session_state.compare_lcia = st.checkbox(
-        "Compare LCIA side by side (last 2 on path)",
-        value=st.session_state.compare_lcia,
+
+    st.divider()
+    st.subheader("Compare")
+
+    if st.session_state.compare_parts:
+        for p in st.session_state.compare_parts:
+            st.caption(f"• {p['material_name']} — {p['attribute']}")
+
+    st.session_state.show_compare_view = st.checkbox(
+        "Show side-by-side comparison",
+        value=st.session_state.show_compare_view,
     )
+
+    if st.button("Clear compare list", use_container_width=True):
+        st.session_state.compare_parts = []
+        st.rerun()
 
     if st.session_state.has_searched and st.session_state.path_ids:
         root_id = st.session_state.path_ids[0]
@@ -629,7 +698,7 @@ with st.sidebar:
 
 
 # =============================================================================
-# SECTION 13 — MAIN AREA GATE (wait until user searches)
+# SECTION 13 — MAIN AREA GATE
 # =============================================================================
 if not st.session_state.has_searched or not st.session_state.path_ids:
     st.info("Search for a material by name, id, or code to get started.")
@@ -660,18 +729,14 @@ st.caption(
 # =============================================================================
 # SECTION 14 — MAIN TABS
 # =============================================================================
-tab_tree, tab_table, tab_bom = st.tabs(
-    ["Submaterial tree + values", "Flat extraction table", "Pick for BOM"]
+tab_path, tab_table, tab_bom = st.tabs(
+    ["Path + explore", "All values (table)", "Pick for BOM"]
 )
 
 
-# --- TAB 1: Path stack + drill-down ---
-with tab_tree:
-    st.subheader("Materials on your path")
-    st.caption(
-        "Each level stays visible as you go deeper. "
-        "Use submaterial links below to drill down."
-    )
+# --- TAB 1 ---
+with tab_path:
+    st.subheader("Your path")
 
     path_nodes = [
         indexes["nodes_by_id"][nid]
@@ -679,89 +744,30 @@ with tab_tree:
         if nid in indexes["nodes_by_id"]
     ]
 
-    if st.session_state.compare_lcia and len(path_nodes) >= 2:
-        st.markdown("**LCIA comparison**")
-        render_lcia_compare(path_nodes[-2:])
-        
-def render_current_node_detail(
-    node: dict[str, Any],
-    indexes: dict[str, Any],
-    *,
-    level_index: int = 0,
-) -> None:
-    """Full detail for the level you are on: values, structured blocks, submaterials."""
-    props = parse_props(node.get("props"))
-    name = node_name(node)
-    attr_rows = attr_rows_for_display(node)
-    children = indexes["children_by_parent"].get(node["id"], [])
-    children = filter_nodes_lcia(children)
+    if st.session_state.show_compare_view and len(st.session_state.compare_parts) >= 2:
+        st.markdown("**Comparison**")
+        render_parts_compare(st.session_state.compare_parts)
+        st.divider()
 
-    if attr_rows:
-        st.markdown("**Attribute values**")
-        for r in attr_rows:
-            c1, c2 = st.columns([6, 1])
-            with c1:
-                st.text(f"{r['attribute']}: {r['value']}")
-            with c2:
-                if is_part_in_compare(node["id"], r["attribute"]):
-                    if st.button("−", key=f"rm_{node['id']}_{r['attribute']}"):
-                        remove_part_from_compare(
-                            part_compare_key(node["id"], r["attribute"])
-                        )
-                        st.rerun()
-                else:
-                    if st.button("+", key=f"add_{node['id']}_{r['attribute']}"):
-                        add_part_to_compare(
-                            node["id"], name, r["attribute"], r["value"]
-                        )
-                        st.rerun()
-    else:
-        st.caption("No attribute values on this level.")
-
-    for key in ATTR_BLOCKS:
-        if key in props and props[key] not in (None, "", {}, []):
-            with st.expander(
-                f"{key} (structured)",
-                key=f"detail_{node['id']}_{level_index}_{key}",
-            ):
-                val = props[key]
-                if isinstance(val, (dict, list)):
-                    st.json(val)
-                else:
-                    st.write(val)
-                if st.button(
-                    f"Add all {key} fields to compare",
-                    key=f"addblock_{node['id']}_{level_index}_{key}",
-                ):
-                    add_block_to_compare(node, key)
-                    st.rerun()
-
-    cb_key = f"bill_{node['id']}_path_{level_index}"
-    st.checkbox(
-        "Add to bill of materials",
-        value=is_in_bill(node["id"]),
-        key=cb_key,
-        on_change=on_bill_toggle,
-        args=(node["id"], cb_key),
-    )
-
-    st.markdown("**Submaterials**")
-    if not children:
-        st.caption("No submaterials here.")
-    else:
-        for child in children:
-            cname = node_name(child)
-            n_child = len(indexes["children_by_parent"].get(child["id"], []))
-            suffix = f" ({n_child} submaterials)" if n_child else ""
-            if has_lcia(child.get("props")):
-                suffix += " · LCIA"
+    if len(path_nodes) > 1:
+        st.markdown("**Above you**")
+        for i, pn in enumerate(path_nodes[:-1]):
+            pname = node_name(pn)
+            n_child = len(indexes["children_by_parent"].get(pn["id"], []))
+            bits = [html_escape(pname)]
+            if n_child:
+                bits.append(f"({n_child} submaterials)")
             st.markdown(
-                f'<a href="?nav={child["id"]}" target="_self">{html_escape(cname)}</a>'
-                f"{html_escape(suffix)}",
+                f'<a href="?crumb={i}" target="_self">{" · ".join(bits)}</a>',
                 unsafe_allow_html=True,
             )
 
-# --- TAB 2: Flat table ---
+    st.divider()
+    st.markdown("**Current material**")
+    render_current_node_detail(path_nodes[-1], indexes, level_index=len(path_nodes) - 1)
+
+
+# --- TAB 2 ---
 with tab_table:
     st.subheader("All materials under this node — every extracted value")
     all_rows: list[dict[str, str]] = []
@@ -785,11 +791,27 @@ with tab_table:
         st.info("No attribute values found in this subtree.")
     else:
         df = pd.DataFrame(all_rows)
-        st.dataframe(
-            df.drop(columns=["_id"]),
-            use_container_width=True,
+
+        pick = st.data_editor(
+            df.assign(compare=False),
+            column_config={"compare": st.column_config.CheckboxColumn("Compare")},
+            disabled=[c for c in df.columns if c != "compare"],
             hide_index=True,
+            use_container_width=True,
+            key="table_compare_pick",
         )
+
+        if st.button("Add checked rows to compare"):
+            for i, row in pick.iterrows():
+                if not row.get("compare"):
+                    continue
+                add_part_to_compare(
+                    df.loc[i, "_id"],
+                    row["material"],
+                    row["attribute"],
+                    row["value"],
+                )
+            st.rerun()
 
         st.download_button(
             "Download extracted values (CSV)",
@@ -799,7 +821,7 @@ with tab_table:
         )
 
 
-# --- TAB 3: Pick for BOM ---
+# --- TAB 3 ---
 with tab_bom:
     st.subheader("Pick materials")
     scope = st.radio(
