@@ -67,6 +67,9 @@ st.markdown(
         opacity: 0.6;
         margin: 0 0.25rem;
     }
+    [data-testid="stForm"] button[kind="formSubmit"] {
+        display: none !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -613,8 +616,35 @@ st.markdown(
 with st.sidebar:
     st.header("Navigation")
 
-    search_query = st.text_input("Search", placeholder="")
-    search_submitted = st.button("Search", use_container_width=True)
+    roots = get_root_nodes()
+    root_labels = [r["label"] for r in roots]
+    root_ids = [r["id"] for r in roots]
+    browse_options = ["— select —"] + root_labels
+
+    if "browse_root" not in st.session_state:
+        st.session_state.browse_root = "— select —"
+
+    browse_pick = st.selectbox(
+        "Top level",
+        options=browse_options,
+        index=browse_options.index(st.session_state.browse_root)
+        if st.session_state.browse_root in browse_options
+        else 0,
+    )
+
+    if browse_pick != st.session_state.browse_root:
+        st.session_state.browse_root = browse_pick
+        if browse_pick != "— select —":
+            idx = root_labels.index(browse_pick)
+            st.session_state.has_searched = True
+            st.session_state.path_ids = [root_ids[idx]]
+            st.session_state.root_indexes = None
+            st.session_state.search_feedback = ""
+        st.rerun()
+
+    with st.form("global_material_search", clear_on_submit=False):
+        search_query = st.text_input("Search", placeholder="")
+        search_submitted = st.form_submit_button("Search")
 
     if search_submitted:
         found_path_ids = search_material_path(search_query)
@@ -623,6 +653,7 @@ with st.sidebar:
             st.session_state.path_ids = found_path_ids
             st.session_state.root_indexes = None
             st.session_state.search_feedback = ""
+            st.session_state.browse_root = "— select —"
             st.rerun()
         else:
             st.session_state.search_feedback = "No material found."
@@ -678,7 +709,8 @@ with st.sidebar:
     if st.button("Clear bill", use_container_width=True):
         st.session_state.bom = {}
         st.rerun()
-        
+
+
 # =============================================================================
 # SECTION 13 — MAIN AREA GATE
 # =============================================================================
