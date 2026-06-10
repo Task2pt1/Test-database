@@ -737,21 +737,21 @@ with st.sidebar:
     if st.session_state.search_feedback:
         st.caption(st.session_state.search_feedback)
 
+    
     #start filter clear
     filter_pick = st.selectbox(
-    "Only show submaterials with:",
-    options=FILTER_ATTR_OPTIONS,
-    index=FILTER_ATTR_OPTIONS.index(st.session_state.filter_attr_block)
-    if st.session_state.filter_attr_block in FILTER_ATTR_OPTIONS
-    else 0,
-)
+        "Only show submaterials with:",
+        options=FILTER_ATTR_OPTIONS,
+        index=FILTER_ATTR_OPTIONS.index(st.session_state.filter_attr_block)
+        if st.session_state.filter_attr_block in FILTER_ATTR_OPTIONS
+        else 0,
+    )
 
-if filter_pick != st.session_state.filter_attr_block:
-    st.session_state.filter_attr_block = filter_pick
-    st.session_state.root_indexes = None
-    st.rerun()
-    #end filter clear
-    
+    if filter_pick != st.session_state.filter_attr_block:
+        st.session_state.filter_attr_block = filter_pick
+        st.session_state.root_indexes = None
+        st.rerun()
+
     if st.session_state.has_searched and st.session_state.path_ids:
         root_id = st.session_state.path_ids[0]
         root_rows = fetch_root_subtree(root_id)
@@ -760,7 +760,8 @@ if filter_pick != st.session_state.filter_attr_block:
         if apply_filter_auto_dive(indexes):
             st.rerun()
         render_clickable_path(st.session_state.path_ids, indexes)
-        
+    #end filter clear
+    
     #compare list
     if st.session_state.compare_materials:
         st.divider()
