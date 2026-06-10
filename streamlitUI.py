@@ -1068,9 +1068,9 @@ with tab_path:
             title += f"  [{len(attr_rows)} values]"
         #expander central
     
-            with st.expander(title, expanded=is_current):
+        with st.expander(title, expanded=is_current):
             attr_groups = grouped_attr_rows_for_display(pn)
-
+    
             if attr_groups:
                 for group_name, group_rows in attr_groups.items():
                     st.markdown(f"**{group_name}**")
@@ -1082,7 +1082,7 @@ with tab_path:
                     )
             else:
                 st.caption("No attribute values on this node.")
-
+    
             cmp_key = f"cmp_{pn['id']}_{i}"
             st.checkbox(
                 "Compare",
@@ -1091,7 +1091,7 @@ with tab_path:
                 on_change=on_compare_toggle,
                 args=(pn["id"], name, cmp_key),
             )
-
+    
             cb_key = f"bill_{pn['id']}_path_{i}"
             st.checkbox(
                 "Add to bill of materials",
@@ -1100,7 +1100,7 @@ with tab_path:
                 on_change=on_bill_toggle,
                 args=(pn["id"], cb_key),
             )
-        
+            
     #end expander
     
     current = path_nodes[-1]
