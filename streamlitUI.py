@@ -370,25 +370,41 @@ def apply_filter_auto_dive(indexes: dict[str, Any]) -> bool:
         return False
     if not st.session_state.path_ids:
         return False
-    anchor_id = st.session_state.path_ids[-1]
-    if node_passes_submaterial_filter(indexes["nodes_by_id"][anchor_id]):
-        return False
-    target_id = first_filtered_descendant(indexes, anchor_id)
-    if not target_id or target_id == anchor_id:
-        return False
-    full = path_to_node(indexes, target_id)
-    root = st.session_state.path_ids[0]
-    new_path = full[full.index(root) :] if root in full else full
-    if new_path == st.session_state.path_ids:
-        return False
-    st.session_state.path_ids = new_path
-    return True
+
+    current_path = list(st.session_state.path_ids)
+
+    for candidate_id in reversed(current_path):
+        candidate_node = indexes["nodes_by_id"].get(candidate_id)
+        if not candidate_node:
+            continue
+
+        if node_passes_submaterial_filter(candidate_node):
+            new_path = path_to_node(indexes, candidate_id)
+            if new_path != current_path:
+                st.session_state.path_ids = new_path
+                return True
+            return False
+
+        filtered_descendant_id = first_filtered_descendant(indexes, candidate_id)
+        if filtered_descendant_id:
+            new_path = path_to_node(indexes, candidate_id)
+            if new_path != current_path:
+                st.session_state.path_ids = new_path
+                return True
+            return False
+
+    root_id = current_path[0]
+    if current_path != [root_id]:
+        st.session_state.path_ids = [root_id]
+        return True
+
+    return False
 
 
 def attr_rows_for_display(node: dict[str, Any]) -> list[dict[str, str]]:
     return extract_attribute_rows(node.get("props") or {})
 
-
+#compare checkbox
 def part_compare_key(material_id: str, attribute: str) -> str:
     return f"{material_id}|{attribute}"
 
@@ -398,7 +414,6 @@ def is_part_in_compare(material_id: str, attribute: str) -> bool:
         p["key"] == part_compare_key(material_id, attribute)
         for p in st.session_state.compare_parts
     )
-
 
 def add_part_to_compare(
     material_id: str, material_name: str, attribute: str, value: str
@@ -420,6 +435,44 @@ def remove_part_from_compare(key: str) -> None:
     ]
 
 
+def is_material_in_compare(material_id: str) -> bool:
+    return any(m["id"] == material_id for m in st.session_state.compare_materials)
+
+
+def add_material_to_compare(material_id: str, material_name: str) -> None:
+    if not is_material_in_compare(material_id):
+        st.session_state.compare_materials.append(
+            {"id": material_id, "name": material_name}
+        )
+
+
+def remove_material_from_compare(material_id: str) -> None:
+    st.session_state.compare_materials = [
+        m for m in st.session_state.compare_materials if m["id"] != material_id
+    ]
+
+def on_compare_toggle(material_id: str, material_name: str, widget_key: str) -> None:
+    if st.session_state[widget_key]:
+        add_material_to_compare(material_id, material_name)
+        st.session_state.show_compare_view = True
+    else:
+        remove_material_from_compare(material_id)
+        if not st.session_state.compare_materials:
+            st.session_state.show_compare_view = False
+
+def grouped_attr_rows_for_display(node: dict[str, Any]) -> dict[str, list[dict[str, str]]]:
+    grouped: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for row in attr_rows_for_display(node):
+        top_key = row["attribute"].split(".", 1)[0]
+        grouped[top_key].append(row)
+    return dict(sorted(grouped.items()))
+
+def on_attr_group_toggle(material_id: str, group_name: str) -> None:
+    state_key = f"open_attr_group_{material_id}"
+    st.session_state[state_key] = (
+        None if st.session_state.get(state_key) == group_name else group_name
+    )
+
 def render_parts_compare(parts: list[dict[str, str]]) -> None:
     if len(parts) < 2:
         st.caption("Add at least 2 parts to compare (use + on any field).")
@@ -430,7 +483,7 @@ def render_parts_compare(parts: list[dict[str, str]]) -> None:
             st.markdown(f"**{part['material_name']}**")
             st.caption(part["attribute"])
             st.write(part["value"])
-
+    #end compare box
 
 def on_nav_child(child_id: str) -> None:
     indexes = st.session_state.get("root_indexes")
@@ -460,15 +513,29 @@ def render_current_node_detail(
         title += f"  [{len(attr_rows)} values]"
 
     with st.expander(title, expanded=True):
-        if attr_rows:
-            st.dataframe(
-                pd.DataFrame(attr_rows),
-                use_container_width=True,
-                hide_index=True,
-                height=min(38 + 28 * len(attr_rows), 280),
-            )
+        # attr display
+        attr_groups = grouped_attr_rows_for_display(pn)
+
+        if attr_groups:
+            open_group = st.session_state.get(f"open_attr_group_{pn['id']}")
+            for group_name, group_rows in attr_groups.items():
+                st.button(
+                    f"{group_name} [{len(group_rows)} values]",
+                    key=f"attr_group_{pn['id']}_{group_name}_{i}",
+                    on_click=on_attr_group_toggle,
+                    args=(pn["id"], group_name),
+                    use_container_width=True,
+                )
+                if open_group == group_name:
+                    st.dataframe(
+                        pd.DataFrame(group_rows),
+                        use_container_width=True,
+                        hide_index=True,
+                        height=min(38 + 28 * len(group_rows), 280),
+                    )
         else:
             st.caption("No attribute values on this node.")
+            #end
 
         st.session_state.show_compare_view = st.checkbox(
             "Compare",
@@ -599,6 +666,9 @@ if "filter_attr_block" not in st.session_state:
 if "compare_parts" not in st.session_state:
     st.session_state.compare_parts = []
 
+if "compare_materials" not in st.session_state:
+    st.session_state.compare_materials = []
+
 if "show_compare_view" not in st.session_state:
     st.session_state.show_compare_view = False
 
@@ -683,17 +753,19 @@ with st.sidebar:
         if apply_filter_auto_dive(indexes):
             st.rerun()
         render_clickable_path(st.session_state.path_ids, indexes)
-
-    if st.session_state.compare_parts:
-        st.divider()
-        st.caption("Compare list")
-        for p in st.session_state.compare_parts:
-            st.caption(f"• {p['material_name']} — {p['attribute']}")
-        if st.button("Clear compare list", use_container_width=True):
-            st.session_state.compare_parts = []
-            st.session_state.show_compare_view = False
-            st.rerun()
-
+        
+    #compare list
+   if st.session_state.compare_materials:
+    st.divider()
+    st.caption("Compare list")
+    for m in st.session_state.compare_materials:
+        st.caption(f"• {m['name']}")
+    if st.button("Clear compare list", use_container_width=True):
+        st.session_state.compare_materials = []
+        st.session_state.compare_parts = []
+        st.session_state.show_compare_view = False
+        st.rerun()
+    #end compare list
     st.divider()
     st.subheader("Bill of materials")
     if not st.session_state.bom:
@@ -787,12 +859,14 @@ with tab_path:
                 )
             else:
                 st.caption("No attribute values on this node.")
-
-            if is_current:
-                st.session_state.show_compare_view = st.checkbox(
+            #if current display
+            cmp_key = f"cmp_{pn['id']}_{i}"
+                st.checkbox(
                     "Compare",
-                    value=st.session_state.show_compare_view,
-                    key=f"cmp_{pn['id']}_{i}",
+                    value=is_material_in_compare(pn["id"]),
+                    key=cmp_key,
+                    on_change=on_compare_toggle,
+                    args=(pn["id"], name, cmp_key),
                 )
                 cb_key = f"bill_{pn['id']}_path_{i}"
                 st.checkbox(
@@ -802,7 +876,8 @@ with tab_path:
                     on_change=on_bill_toggle,
                     args=(pn["id"], cb_key),
                 )
-
+                #end if current display
+    
     current = path_nodes[-1]
     children = filter_nodes_by_attr(
         indexes["children_by_parent"].get(current["id"], [])
