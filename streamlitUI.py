@@ -353,12 +353,11 @@ def render_compact_attributes(node: dict[str, Any], *, current: bool = False) ->
     name = node_name(node)
     rows = attr_rows_for_display(node)
     tag = " ← you are here" if current else ""
-
     st.markdown(f"**{name}**{tag}")
     if not rows:
-        st.caption("No values on this node.")
+        if current:
+            st.caption("No attribute values on this level — pick a submaterial below.")
         return
-
     df = pd.DataFrame(rows)
     st.dataframe(
         df,
@@ -366,31 +365,63 @@ def render_compact_attributes(node: dict[str, Any], *, current: bool = False) ->
         hide_index=True,
         height=min(38 + 28 * len(rows), 220),
     )
+def part_compare_key(material_id: str, attribute: str) -> str:
+    return f"{material_id}|{attribute}"
 
 
-def render_lcia_compare(nodes: list[dict[str, Any]]) -> None:
-    if len(nodes) < 2:
-        st.caption("Need at least 2 materials on the path to compare.")
+def is_part_in_compare(material_id: str, attribute: str) -> bool:
+    k = part_compare_key(material_id, attribute)
+    return any(p["key"] == k for p in st.session_state.compare_parts)
+
+
+def add_part_to_compare(
+    material_id: str,
+    material_name: str,
+    attribute: str,
+    value: str,
+) -> None:
+    entry = {
+        "key": part_compare_key(material_id, attribute),
+        "material_id": material_id,
+        "material_name": material_name,
+        "attribute": attribute,
+        "value": value,
+    }
+    if not any(p["key"] == entry["key"] for p in st.session_state.compare_parts):
+        st.session_state.compare_parts.append(entry)
+
+
+def remove_part_from_compare(key: str) -> None:
+    st.session_state.compare_parts = [
+        p for p in st.session_state.compare_parts if p["key"] != key
+    ]
+
+
+def add_block_to_compare(
+    node: dict[str, Any],
+    block_key: str,
+) -> None:
+    """Add every leaf field under a structured block (lcia, activity, …)."""
+    props = parse_props(node.get("props"))
+    if block_key not in props:
+        return
+    name = node_name(node)
+    rows = flatten_leaves(props[block_key], block_key)
+    for r in rows:
+        add_part_to_compare(node["id"], name, r["attribute"], r["value"])
+
+
+def render_parts_compare(parts: list[dict[str, str]]) -> None:
+    if len(parts) < 2:
+        st.caption("Add at least 2 parts to compare (use + on any field).")
         return
 
-    maps = [lcia_field_map(n) for n in nodes]
-    all_keys = sorted({k for m in maps for k in m})
-
-    if not all_keys:
-        st.caption("No LCIA fields on these materials.")
-        return
-
-    cols = st.columns(len(nodes))
-    for col, node, fmap in zip(cols, nodes, maps):
+    cols = st.columns(len(parts))
+    for col, part in zip(cols, parts):
         with col:
-            st.markdown(f"**{node_name(node)}**")
-            col_rows = [{"field": k, "value": fmap.get(k, "—")} for k in all_keys]
-            st.dataframe(
-                pd.DataFrame(col_rows),
-                use_container_width=True,
-                hide_index=True,
-                height=min(38 + 28 * len(all_keys), 320),
-            )
+            st.markdown(f"**{part['material_name']}**")
+            st.caption(part["attribute"])
+            st.write(part["value"])
 
 
 # =============================================================================
@@ -516,8 +547,10 @@ if "bom" not in st.session_state:
 if "filter_lcia_only" not in st.session_state:
     st.session_state.filter_lcia_only = False
 
-if "compare_lcia" not in st.session_state:
-    st.session_state.compare_lcia = False
+if "compare_parts" not in st.session_state:
+    st.session_state.compare_parts = []
+if "show_compare_view" not in st.session_state:
+    st.session_state.show_compare_view = False
 
 
 # =============================================================================
@@ -649,7 +682,80 @@ with tab_tree:
     if st.session_state.compare_lcia and len(path_nodes) >= 2:
         st.markdown("**LCIA comparison**")
         render_lcia_compare(path_nodes[-2:])
+        
+def render_current_node_detail(
+    node: dict[str, Any],
+    indexes: dict[str, Any],
+    *,
+    level_index: int = 0,
+) -> None:
+    """Full detail for the level you are on: values, structured blocks, submaterials."""
+    props = parse_props(node.get("props"))
+    name = node_name(node)
+    attr_rows = attr_rows_for_display(node)
+    children = indexes["children_by_parent"].get(node["id"], [])
+    children = filter_nodes_lcia(children)
 
+    if attr_rows:
+    st.markdown("**Attribute values**")
+    for r in attr_rows:
+        c1, c2 = st.columns([6, 1])
+        with c1:
+            st.text(f"{r['attribute']}: {r['value']}")
+        with c2:
+            if is_part_in_compare(node["id"], r["attribute"]):
+                if st.button("−", key=f"rm_{node['id']}_{r['attribute']}"):
+                    remove_part_from_compare(
+                        part_compare_key(node["id"], r["attribute"])
+                    )
+                    st.rerun()
+            else:
+                if st.button("+", key=f"add_{node['id']}_{r['attribute']}"):
+                    add_part_to_compare(
+                        node["id"], name, r["attribute"], r["value"]
+                    )
+                    st.rerun()
+else:
+    st.caption("No attribute values on this level.")
+    else:
+        st.caption("No attribute values on this level.")
+
+    for key in ATTR_BLOCKS:
+        if key in props and props[key] not in (None, "", {}, []):
+            with st.expander(
+                f"{key} (structured)",
+                key=f"detail_{node['id']}_{level_index}_{key}",
+            ):
+                val = props[key]
+                if isinstance(val, (dict, list)):
+                    st.json(val)
+                else:
+                    st.write(val)
+
+    cb_key = f"bill_{node['id']}_path_{level_index}"
+    st.checkbox(
+        "Add to bill of materials",
+        value=is_in_bill(node["id"]),
+        key=cb_key,
+        on_change=on_bill_toggle,
+        args=(node["id"], cb_key),
+    )
+
+    st.markdown("**Submaterials**")
+    if not children:
+        st.caption("No submaterials here.")
+    else:
+        for child in children:
+            cname = node_name(child)
+            n_child = len(indexes["children_by_parent"].get(child["id"], []))
+            suffix = f" ({n_child} submaterials)" if n_child else ""
+            if has_lcia(child.get("props")):
+                suffix += " · LCIA"
+            st.markdown(
+                f'<a href="?nav={child["id"]}" target="_self">{html_escape(cname)}</a>'
+                f"{html_escape(suffix)}",
+                unsafe_allow_html=True,
+            )
     for i, pn in enumerate(path_nodes):
         with st.container():
             st.markdown('<div class="stack-panel">', unsafe_allow_html=True)
