@@ -1236,13 +1236,12 @@ with tab_compare:
         st.info("Select at least 2 materials with the Compare checkbox.")
     else:
         compare_parts: list[dict[str, str]] = []
-
+        #
         for material in st.session_state.compare_materials:
             node = fetch_material_node(material["id"])
             if not node:
                 continue
-
-            attr_rows = extract_attribute_rows(node.get("props") or {})
+            attr_rows = flatten_all_props(node.get("props") or {})
             for attr_row in attr_rows:
                 compare_parts.append(
                     {
