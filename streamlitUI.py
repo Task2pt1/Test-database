@@ -755,7 +755,7 @@ with st.sidebar:
         render_clickable_path(st.session_state.path_ids, indexes)
         
     #compare list
-   if st.session_state.compare_materials:
+    if st.session_state.compare_materials:
     st.divider()
     st.caption("Compare list")
     for m in st.session_state.compare_materials:
