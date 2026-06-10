@@ -830,19 +830,18 @@ with st.sidebar:
         for cat in sorted(st.session_state.bom.keys()):
             st.markdown(f"**{cat}**")
             for i, item in enumerate(st.session_state.bom[cat], 1):
-                st.write(f"{i}. {item['name']}")
-                vals = item.get("values") or {}
-                if vals:
-                    preview = "; ".join(
-                        f"{k}={v}" for k, v in list(vals.items())[:3]
-                    )
-                    if len(vals) > 3:
-                        preview += f" … (+{len(vals) - 3} more)"
-                    st.caption(preview)
+                name_col, reject_col = st.columns([6, 1])
+                with name_col:
+                    st.write(f"{i}. {item['name']}")
+                with reject_col:
+                    if st.button("✕", key=f"reject_bom_{cat}_{item['id']}"):
+                        remove_from_bill(item["id"])
+                        st.rerun()
 
     if st.button("Clear bill", use_container_width=True):
         st.session_state.bom = {}
         st.rerun()
+
 
 
 # =============================================================================
@@ -871,7 +870,7 @@ subtree = get_subtree_rows_from_indexes(current_id, indexes)
 # =============================================================================
 # SECTION 14 — MAIN TABS
 # =============================================================================
-tab_path, tab_table, tab_bom, tab_compare = st.tabs(
+tab_path, tab_table, tab_compare, tab_bom = st.tabs(
     ["Path + explore", "All values (table)", "Export BOM", "Compare"])
 
 # --- TAB 1 ---
@@ -1052,57 +1051,42 @@ with tab_compare:
         else:
             render_parts_compare(compare_parts)
 
+
 # --- TAB 4 ---
 with tab_bom:
-    st.subheader("Pick materials")
-    scope = st.radio(
-        "List",
-        ["Children here", "All under this node"],
-        horizontal=True,
-    )
+    st.subheader("Export BOM")
 
-    if scope == "Children here":
-        items = direct_children
-    else:
-        item_ids = indexes["descendants_by_id"].get(current_id, [])
-        items = [indexes["nodes_by_id"][item_id] for item_id in item_ids]
+    bom_rows: list[dict[str, str]] = []
 
-    table_rows = []
-    for x in items:
-        attr_rows = extract_attribute_rows(x["props"] or {})
-        summary = "; ".join(
-            f"{r['attribute']}={r['value']}" for r in attr_rows[:4]
-        )
-        if len(attr_rows) > 4:
-            summary += f" … (+{len(attr_rows) - 4} more)"
-
-        table_rows.append(
-            {
-                "bill": False,
-                "name": node_name(x),
-                "values": summary or "—",
-                "_id": x["id"],
+    for category in sorted(st.session_state.bom.keys()):
+        for item in st.session_state.bom[category]:
+            row = {
+                "category": category,
+                "material_id": item["id"],
+                "material_name": item["name"],
             }
-        )
+            for attr, value in (item.get("values") or {}).items():
+                row[attr] = value
+            bom_rows.append(row)
 
-    if not table_rows:
-        st.caption("Nothing to pick.")
+    if not bom_rows:
+        st.info("No materials in the bill of materials yet.")
     else:
-        df = pd.DataFrame(table_rows)
-        edited = st.data_editor(
-            df.drop(columns=["_id"]),
-            column_config={"bill": st.column_config.CheckboxColumn("Bill")},
-            disabled=[c for c in df.columns if c not in ("bill",)],
-            hide_index=True,
+        bom_df = pd.DataFrame(bom_rows)
+        preferred_cols = ["category", "material_id", "material_name"]
+        other_cols = [c for c in bom_df.columns if c not in preferred_cols]
+        bom_df = bom_df[preferred_cols + sorted(other_cols)]
+
+        st.dataframe(
+            bom_df,
             use_container_width=True,
-            key="pick_editor",
+            hide_index=True,
+            height=700,
         )
 
-        if st.button("Add checked to bill"):
-            for i, row in edited.iterrows():
-                if not row.get("bill"):
-                    continue
-                mid = df.loc[i, "_id"]
-                selected_node = indexes["nodes_by_id"][mid]
-                add_to_bill_from_node(selected_node, indexes["root_name"])
-            st.rerun()
+        st.download_button(
+            "Export BOM to CSV",
+            bom_df.to_csv(index=False),
+            file_name="bill_of_materials.csv",
+            mime="text/csv",
+        )
