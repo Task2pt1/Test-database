@@ -448,61 +448,51 @@ def render_current_node_detail(
 ) -> None:
     name = node_name(node)
     attr_rows = attr_rows_for_display(node)
-    children = filter_nodes_by_attr(
-        indexes["children_by_parent"].get(node["id"], [])
-    )
-    choice = st.session_state.filter_attr_block
+    all_children = indexes["children_by_parent"].get(node["id"], [])
+    children = filter_nodes_by_attr(all_children)
 
+    title = name
+    if children:
+        title += f"  ({len(children)} submaterials)"
     if attr_rows:
-        st.markdown("**Attribute values**")
-        for r in attr_rows:
-            c1, c2 = st.columns([6, 1])
-            with c1:
-                st.text(f"{r['attribute']}: {r['value']}")
-            with c2:
-                if is_part_in_compare(node["id"], r["attribute"]):
-                    if st.button("−", key=f"rm_{node['id']}_{r['attribute']}"):
-                        remove_part_from_compare(
-                            part_compare_key(node["id"], r["attribute"])
-                        )
-                        st.rerun()
-                else:
-                    if st.button("+", key=f"add_{node['id']}_{r['attribute']}"):
-                        add_part_to_compare(
-                            node["id"], name, r["attribute"], r["value"]
-                        )
-                        st.rerun()
-    else:
-        st.caption("No attribute values on this level.")
+        title += f"  [{len(attr_rows)} values]"
 
-    st.session_state.show_compare_view = st.checkbox(
-        "Compare",
-        value=st.session_state.show_compare_view,
-        key=f"cmp_{node['id']}_{level_index}",
-    )
-    cb_key = f"bill_{node['id']}_path_{level_index}"
-    st.checkbox(
-        "Add to bill of materials",
-        value=is_in_bill(node["id"]),
-        key=cb_key,
-        on_change=on_bill_toggle,
-        args=(node["id"], cb_key),
-    )
+    with st.expander(title, expanded=True):
+        if attr_rows:
+            st.dataframe(
+                pd.DataFrame(attr_rows),
+                use_container_width=True,
+                hide_index=True,
+                height=min(38 + 28 * len(attr_rows), 280),
+            )
+        else:
+            st.caption("No attribute values on this node.")
 
-    st.markdown("**Submaterials**")
-    if not children:
-        st.caption("No submaterials here — use **Go back** above or **Path** in the sidebar.")
-    else:
+        st.session_state.show_compare_view = st.checkbox(
+            "Compare",
+            value=st.session_state.show_compare_view,
+            key=f"cmp_{node['id']}_{level_index}",
+        )
+        cb_key = f"bill_{node['id']}_path_{level_index}"
+        st.checkbox(
+            "Add to bill of materials",
+            value=is_in_bill(node["id"]),
+            key=cb_key,
+            on_change=on_bill_toggle,
+            args=(node["id"], cb_key),
+        )
+
+    if children:
+        st.markdown("**Submaterials**")
         for child in children:
             cname = node_name(child)
             n_child = len(indexes["children_by_parent"].get(child["id"], []))
             label = cname
             if n_child:
                 label += f" ({n_child} submaterials)"
-            if choice not in ("(no filter)", "(any values)") and has_attr_block(
-                child.get("props"), choice
-            ):
-                label += f" · {choice}"
+            n_vals = len(attr_rows_for_display(child))
+            if n_vals:
+                label += f"  [{n_vals} values]"
             st.button(
                 label,
                 key=f"nav_{node['id']}_{child['id']}_{level_index}",
@@ -510,6 +500,10 @@ def render_current_node_detail(
                 args=(child["id"],),
                 use_container_width=True,
             )
+    elif all_children:
+        st.caption("No submaterials match the current filter.")
+    else:
+        st.caption("No submaterials here.")
 # =============================================================================
 # SECTION 8 — BOM HELPERS
 # =============================================================================
@@ -710,7 +704,6 @@ st.caption(
     f"Total nodes in subtree: **{len(subtree)}**"
 )
 
-
 # =============================================================================
 # SECTION 14 — MAIN TABS
 # =============================================================================
@@ -719,7 +712,6 @@ tab_path, tab_table, tab_bom = st.tabs(
 )
 
 
-# --- TAB 1 ---
 # --- TAB 1 ---
 with tab_path:
     path_nodes = [
@@ -734,27 +726,75 @@ with tab_path:
     else:
         st.subheader("Explore")
 
-    if len(path_labels) > 1:
-        st.markdown("**Go back**")
-        back_cols = st.columns(min(len(path_labels) - 1, 4))
-        for i, label in enumerate(path_labels[:-1]):
-            with back_cols[i % len(back_cols)]:
-                st.button(
-                    label,
-                    key=f"back_{i}_{path_nodes[i]['id']}",
-                    on_click=on_crumb_click,
-                    args=(i,),
-                    use_container_width=True,
-                )
-
     if st.session_state.show_compare_view and len(st.session_state.compare_parts) >= 2:
         st.markdown("**Comparison**")
         render_parts_compare(st.session_state.compare_parts)
         st.divider()
 
-    render_current_node_detail(
-        path_nodes[-1], indexes, level_index=len(path_nodes) - 1
+    for i, pn in enumerate(path_nodes):
+        is_current = i == len(path_nodes) - 1
+        name = node_name(pn)
+        attr_rows = attr_rows_for_display(pn)
+        all_children = indexes["children_by_parent"].get(pn["id"], [])
+
+        title = name
+        if all_children:
+            title += f"  ({len(all_children)} submaterials)"
+        if attr_rows:
+            title += f"  [{len(attr_rows)} values]"
+
+        with st.expander(title, expanded=is_current):
+            if attr_rows:
+                st.dataframe(
+                    pd.DataFrame(attr_rows),
+                    use_container_width=True,
+                    hide_index=True,
+                    height=min(38 + 28 * len(attr_rows), 280),
+                )
+            else:
+                st.caption("No attribute values on this node.")
+
+            if is_current:
+                st.session_state.show_compare_view = st.checkbox(
+                    "Compare",
+                    value=st.session_state.show_compare_view,
+                    key=f"cmp_{pn['id']}_{i}",
+                )
+                cb_key = f"bill_{pn['id']}_path_{i}"
+                st.checkbox(
+                    "Add to bill of materials",
+                    value=is_in_bill(pn["id"]),
+                    key=cb_key,
+                    on_change=on_bill_toggle,
+                    args=(pn["id"], cb_key),
+                )
+
+    current = path_nodes[-1]
+    children = filter_nodes_by_attr(
+        indexes["children_by_parent"].get(current["id"], [])
     )
+
+    st.markdown("**Submaterials**")
+    if not children:
+        st.caption("No submaterials here.")
+    else:
+        for child in children:
+            cname = node_name(child)
+            n_child = len(indexes["children_by_parent"].get(child["id"], []))
+            label = cname
+            if n_child:
+                label += f" ({n_child} submaterials)"
+            n_vals = len(attr_rows_for_display(child))
+            if n_vals:
+                label += f"  [{n_vals} values]"
+            st.button(
+                label,
+                key=f"nav_{current['id']}_{child['id']}",
+                on_click=on_nav_child,
+                args=(child["id"],),
+                use_container_width=True,
+            )
+
 
 # --- TAB 2 ---
 with tab_table:
