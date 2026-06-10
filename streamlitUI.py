@@ -34,7 +34,7 @@ ATTR_BLOCKS = (
 
 META_KEYS = {"name", "id", "code", "database", "vector", "placement"}
 
-FILTER_ATTR_OPTIONS = ["(no filter)", "(any values)", *ATTR_BLOCKS]
+FILTER_ATTR_OPTIONS = ["(no filter)",  *ATTR_BLOCKS]
 
 
 # =============================================================================
@@ -470,8 +470,6 @@ def node_passes_submaterial_filter(node: dict[str, Any]) -> bool:
     choice = st.session_state.filter_attr_block
     if choice == "(no filter)":
         return True
-    if choice == "(any values)":
-        return bool(extract_attribute_rows(node.get("props") or {}))
     return has_attr_block(node.get("props"), choice)
 
 def filter_nodes_by_attr(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -560,7 +558,32 @@ def apply_filter_auto_dive(indexes: dict[str, Any]) -> bool:
 
 def attr_rows_for_display(node: dict[str, Any]) -> list[dict[str, str]]:
     return extract_attribute_rows(node.get("props") or {})
+    
+def node_has_values(node: dict[str, Any]) -> bool:
+    return bool(flatten_compare_props(node.get("props") or {}))
 
+
+def summarize_branch(indexes: dict[str, Any], node_id: str) -> dict[str, Any]:
+    direct_children = indexes["children_by_parent"].get(node_id, [])
+    descendant_ids = indexes["descendants_by_id"].get(node_id, [])
+
+    populated_direct_children = [
+        child for child in direct_children if node_has_values(child)
+    ]
+
+    populated_descendants = [
+        indexes["nodes_by_id"][desc_id]
+        for desc_id in descendant_ids
+        if node_has_values(indexes["nodes_by_id"][desc_id])
+    ]
+
+    return {
+        "direct_children": direct_children,
+        "direct_child_count": len(direct_children),
+        "descendant_count": len(descendant_ids),
+        "populated_direct_children": populated_direct_children,
+        "populated_descendant_count": len(populated_descendants),
+    }
 #compare checkbox
 def part_compare_key(material_id: str, attribute: str) -> str:
     return f"{material_id}|{attribute}"
@@ -1133,7 +1156,7 @@ with tab_path:
             child_attr_groups = grouped_attr_rows_for_display(child)
             choice = st.session_state.filter_attr_block
 
-            if choice in ("(no filter)", "(any values)"):
+            if choice in ("(no filter)"):
                 preview_rows = attr_rows_for_display(child)
             else:
                 preview_rows = child_attr_groups.get(choice, [])
@@ -1177,7 +1200,7 @@ with tab_path:
                     )
 
                 if preview_rows:
-                    if choice not in ("(no filter)", "(any values)"):
+                    if choice not in ("(no filter)"):
                         st.markdown(f"**{choice}**")
                     st.dataframe(
                         pd.DataFrame(preview_rows),
@@ -1245,15 +1268,35 @@ with tab_compare:
     st.subheader("Compare materials")
 
     if len(st.session_state.compare_materials) < 2:
-        st.info("Select at least 2 materials with the Compare checkbox.")
+        branch = summarize_branch(indexes, current_id)
+
+        if branch["direct_child_count"] == 0:
+            st.info("Select at least 2 materials with the Compare checkbox.")
+        else:
+            st.info(
+                f"{node_name(node)} is a category node with "
+                f"{branch['direct_child_count']} direct submaterials and "
+                f"{branch['populated_descendant_count']} populated descendants."
+            )
+
+            if branch["populated_direct_children"]:
+                if st.button("Compare direct submaterials"):
+                    st.session_state.compare_materials = [
+                        {"id": child["id"], "name": node_name(child)}
+                        for child in branch["populated_direct_children"]
+                    ]
+                    st.rerun()
+            else:
+                st.caption("No direct submaterials under this node have comparable values.")
     else:
         compare_parts: list[dict[str, str]] = []
-        #
+
         for material in st.session_state.compare_materials:
-            node = fetch_material_node(material["id"])
-            if not node:
+            material_node = fetch_material_node(material["id"])
+            if not material_node:
                 continue
-            attr_rows = flatten_compare_props(node.get("props") or {})
+
+            attr_rows = flatten_compare_props(material_node.get("props") or {})
             for attr_row in attr_rows:
                 compare_parts.append(
                     {
@@ -1269,7 +1312,7 @@ with tab_compare:
             st.info("No comparable attributes found for the selected materials.")
         else:
             render_parts_compare(compare_parts)
-
+            
 # --- TAB 4 ---
 with tab_bom:
     st.subheader("Export BOM")
