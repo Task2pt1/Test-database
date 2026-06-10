@@ -48,9 +48,6 @@ st.markdown(
         font-weight: 600;
         margin-bottom: 0.5rem;
     }
-    div[data-testid="stFormSubmitInstruction"] {
-        display: none;
-    }
     .crumbs {
         font-size: 0.95rem;
         line-height: 1.6;
@@ -615,12 +612,10 @@ st.markdown(
 # =============================================================================
 with st.sidebar:
     st.header("Navigation")
-    with st.form("global_material_search", clear_on_submit=False):
-        search_query = st.text_input(
-            "Search",
-            placeholder="",
-        )
-        search_submitted = st.form_submit_button("Search--name, id, or code", use_container_width=True)
+
+    search_query = st.text_input("Search", placeholder="")
+    search_submitted = st.button("Search", type="primary", use_container_width=True)
+
     if search_submitted:
         found_path_ids = search_material_path(search_query)
         if found_path_ids:
@@ -631,8 +626,10 @@ with st.sidebar:
             st.rerun()
         else:
             st.session_state.search_feedback = "No material found."
+
     if st.session_state.search_feedback:
         st.caption(st.session_state.search_feedback)
+
     st.session_state.filter_attr_block = st.selectbox(
         "Only show submaterials with:",
         options=FILTER_ATTR_OPTIONS,
@@ -640,6 +637,7 @@ with st.sidebar:
         if st.session_state.filter_attr_block in FILTER_ATTR_OPTIONS
         else 0,
     )
+
     if st.session_state.has_searched and st.session_state.path_ids:
         root_id = st.session_state.path_ids[0]
         root_rows = fetch_root_subtree(root_id)
@@ -648,6 +646,7 @@ with st.sidebar:
         if apply_filter_auto_dive(indexes):
             st.rerun()
         render_clickable_path(st.session_state.path_ids, indexes)
+
     if st.session_state.compare_parts:
         st.divider()
         st.caption("Compare list")
@@ -657,6 +656,7 @@ with st.sidebar:
             st.session_state.compare_parts = []
             st.session_state.show_compare_view = False
             st.rerun()
+
     st.divider()
     st.subheader("Bill of materials")
     if not st.session_state.bom:
@@ -674,10 +674,11 @@ with st.sidebar:
                     if len(vals) > 3:
                         preview += f" … (+{len(vals) - 3} more)"
                     st.caption(preview)
+
     if st.button("Clear bill", use_container_width=True):
         st.session_state.bom = {}
         st.rerun()
-
+        
 # =============================================================================
 # SECTION 13 — MAIN AREA GATE
 # =============================================================================
@@ -700,19 +701,12 @@ if not node:
 direct_children = indexes["children_by_parent"].get(current_id, [])
 subtree = get_subtree_rows_from_indexes(current_id, indexes)
 
-st.header(node_name(node))
-st.caption(
-    f"Direct submaterials: **{len(direct_children)}** · "
-    f"Total nodes in subtree: **{len(subtree)}**"
-)
 
 # =============================================================================
 # SECTION 14 — MAIN TABS
 # =============================================================================
 tab_path, tab_table, tab_bom = st.tabs(
-    ["Path + explore", "All values (table)", "Pick for BOM"]
-)
-
+    ["Path + explore", "All values (table)", "Pick for BOM"])
 
 # --- TAB 1 ---
 with tab_path:
