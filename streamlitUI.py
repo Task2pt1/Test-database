@@ -686,7 +686,7 @@ st.markdown(
 with st.sidebar:
     st.header("Navigation")
 
-    #roo dropdown
+    #roots dropdown
     roots = get_root_nodes()
     root_map = {r["id"]: r["label"] for r in roots}
     browse_options = [""] + list(root_map.keys())
@@ -748,8 +748,6 @@ with st.sidebar:
 
 if filter_pick != st.session_state.filter_attr_block:
     st.session_state.filter_attr_block = filter_pick
-    if st.session_state.path_ids:
-        st.session_state.path_ids = [st.session_state.path_ids[0]]
     st.session_state.root_indexes = None
     st.rerun()
     #end filter clear
