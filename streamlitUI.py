@@ -754,34 +754,20 @@ tab_path, tab_table, tab_bom = st.tabs(
 
 # --- TAB 1 ---
 with tab_path:
-    st.subheader("Your path")
-
     path_nodes = [
         indexes["nodes_by_id"][nid]
         for nid in st.session_state.path_ids
         if nid in indexes["nodes_by_id"]
     ]
-
+    path_labels = [node_name(pn) for pn in path_nodes]
+    if path_labels:
+        st.subheader(" › ".join(path_labels))
+    else:
+        st.subheader("Explore")
     if st.session_state.show_compare_view and len(st.session_state.compare_parts) >= 2:
         st.markdown("**Comparison**")
         render_parts_compare(st.session_state.compare_parts)
         st.divider()
-
-    if len(path_nodes) > 1:
-        st.markdown("**Above you**")
-        for i, pn in enumerate(path_nodes[:-1]):
-            pname = node_name(pn)
-            n_child = len(indexes["children_by_parent"].get(pn["id"], []))
-            bits = [html_escape(pname)]
-            if n_child:
-                bits.append(f"({n_child} submaterials)")
-            st.markdown(
-                f'<a href="?crumb={i}" target="_self">{" · ".join(bits)}</a>',
-                unsafe_allow_html=True,
-            )
-
-    st.divider()
-    st.markdown("**Current material**")
     render_current_node_detail(
         path_nodes[-1], indexes, level_index=len(path_nodes) - 1
     )
