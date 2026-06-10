@@ -201,7 +201,64 @@ def flatten_all_props(props: dict[str, Any] | None) -> list[dict[str, str]]:
         rows.extend(flatten_leaves(value, key))
 
     return rows
+    
 
+def flatten_compare_props(props: dict[str, Any] | None) -> list[dict[str, str]]:
+    parsed = parse_props(props)
+    rows: list[dict[str, str]] = []
+
+    def walk(obj: Any, path: str = "") -> None:
+        if isinstance(obj, dict):
+            if "value" in obj and obj["value"] not in (None, ""):
+                value = str(obj["value"]).strip()
+                unit = str(obj.get("unit", "")).strip()
+                rows.append(
+                    {
+                        "attribute": path,
+                        "value": f"{value} {unit}".strip(),
+                    }
+                )
+                return
+
+            for key, value in obj.items():
+                if key in {"unit", "flow", "compartment"}:
+                    continue
+                next_path = f"{path}.{key}" if path else key
+                walk(value, next_path)
+            return
+
+        if isinstance(obj, list):
+            if obj and all(not isinstance(item, (dict, list)) for item in obj):
+                rows.append(
+                    {
+                        "attribute": path,
+                        "value": ", ".join(str(item) for item in obj),
+                    }
+                )
+            else:
+                for i, item in enumerate(obj):
+                    walk(item, f"{path}[{i}]")
+            return
+
+        if obj not in (None, "", {}, []):
+            rows.append({"attribute": path, "value": str(obj)})
+
+    for key, value in parsed.items():
+        if key in META_KEYS or value in (None, "", {}, []):
+            continue
+        walk(value, key)
+
+    deduped: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    for row in rows:
+        marker = (row["attribute"], row["value"])
+        if marker not in seen:
+            seen.add(marker)
+            deduped.append(row)
+
+    return deduped
+    
 def extract_attribute_rows(props: dict[str, Any]) -> list[dict[str, str]]:
     parsed = parse_props(props)
     rows: list[dict[str, str]] = []
@@ -573,9 +630,10 @@ def on_attr_group_toggle(material_id: str, group_name: str) -> None:
         None if st.session_state.get(state_key) == group_name else group_name
     )
 
+
 def render_parts_compare(parts: list[dict[str, str]]) -> None:
     if len(parts) < 2:
-        st.caption("Add at least 2 materials to compare.")
+        st.caption("Select at least 2 materials to compare.")
         return
 
     rows_by_material: dict[str, dict[str, str]] = defaultdict(dict)
@@ -586,45 +644,71 @@ def render_parts_compare(parts: list[dict[str, str]]) -> None:
         material_names[material_id] = part["material_name"]
         rows_by_material[material_id][part["attribute"]] = part["value"]
 
+    ordered_material_ids = list(material_names.keys())
     all_attributes = sorted(
         {
             attribute
-            for material_rows in rows_by_material.values()
-            for attribute in material_rows.keys()
+            for material_id in ordered_material_ids
+            for attribute in rows_by_material[material_id].keys()
         }
     )
 
     if not all_attributes:
-        st.caption("No compared attributes yet.")
+        st.caption("No comparable attributes found.")
         return
 
-    ordered_material_ids = list(material_names.keys())
+    show_only_differences = st.checkbox(
+        "Show only differing attributes",
+        value=True,
+        key="compare_show_only_differences",
+    )
 
-    html = ['<div class="compare-scroll"><table class="compare-table">']
-    html.append("<thead><tr>")
-    html.append('<th class="sticky-attr">attribute</th>')
-
-    for material_id in ordered_material_ids:
-        html.append(
-            f'<th class="material-col">{html_escape(material_names[material_id])}</th>'
-        )
-
-    html.append("</tr></thead><tbody>")
-
+    kept_attributes: list[str] = []
     for attribute in all_attributes:
-        html.append("<tr>")
-        html.append(f'<td class="sticky-attr">{html_escape(attribute)}</td>')
-
+        values = []
         for material_id in ordered_material_ids:
-            value = rows_by_material[material_id].get(attribute, "")
-            html.append(f'<td class="material-col">{html_escape(str(value))}</td>')
+            value = rows_by_material[material_id].get(attribute, "").strip()
+            if value:
+                values.append(value)
+        unique_values = set(values)
+        if not show_only_differences or len(unique_values) > 1:
+            kept_attributes.append(attribute)
 
-        html.append("</tr>")
+    if not kept_attributes:
+        st.caption("No differing attributes across selected materials.")
+        return
 
-    html.append("</tbody></table></div>")
+    compare_rows: list[dict[str, str]] = []
+    for material_id in ordered_material_ids:
+        row = {
+            "material": material_names[material_id],
+        }
+        for attribute in kept_attributes:
+            row[attribute] = rows_by_material[material_id].get(attribute, "")
+        compare_rows.append(row)
 
-    st.markdown("Narrow horizontal scroll. Attribute stays pinned on the left.")
-    st.markdown("".join(html), unsafe_allow_html=True)
+    df = pd.DataFrame(compare_rows)
+
+    renamed_columns = {
+        col: col.replace(".", " › ")
+        for col in df.columns
+        if col != "material"
+    }
+    df = df.rename(columns=renamed_columns)
+
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        height=min(220 + 48 * len(df), 900),
+    )
+
+    st.download_button(
+        "Download comparison (CSV)",
+        df.to_csv(index=False),
+        file_name="material_comparison.csv",
+        mime="text/csv",
+    )
     #end compare box
 
 def on_nav_child(child_id: str) -> None:
@@ -639,84 +723,7 @@ def on_nav_child(child_id: str) -> None:
         st.session_state.path_ids = path_to_node(indexes, child_id)
         st.rerun()
 
-def render_current_node_detail(
-    node: dict[str, Any],
-    indexes: dict[str, Any],
-    *,
-    level_index: int = 0,
-) -> None:
-    name = node_name(node)
-    attr_rows = attr_rows_for_display(node)
-    all_children = indexes["children_by_parent"].get(node["id"], [])
-    children = filter_nodes_by_attr(all_children)
 
-    #
-    title = name
-    if all_children:
-        title += f" ({len(all_children)} submaterials)"
-    if attr_rows:
-        title += f" [{len(attr_rows)} values]"
-
-        with st.expander(title, expanded=is_current):
-            attr_groups = grouped_attr_rows_for_display(pn)
-
-        if attr_groups:
-            open_group = st.session_state.get(f"open_attr_group_{pn['id']}")
-            for group_name, group_rows in attr_groups.items():
-                st.button(
-                    f"{group_name} [{len(group_rows)} values]",
-                    key=f"attr_group_{pn['id']}_{group_name}_{i}",
-                    on_click=on_attr_group_toggle,
-                    args=(pn["id"], group_name),
-                    use_container_width=True,
-                )
-                if open_group == group_name:
-                    st.dataframe(
-                        pd.DataFrame(group_rows),
-                        use_container_width=True,
-                        hide_index=True,
-                        height=min(38 + 28 * len(group_rows), 280),
-                    )
-        else:
-            st.caption("No attribute values on this node.")
-            #end
-
-        st.session_state.show_compare_view = st.checkbox(
-            "Compare",
-            value=st.session_state.show_compare_view,
-            key=f"cmp_{node['id']}_{level_index}",
-        )
-        cb_key = f"bill_{node['id']}_path_{level_index}"
-        st.checkbox(
-            "Add to bill of materials",
-            value=is_in_bill(node["id"]),
-            key=cb_key,
-            on_change=on_bill_toggle,
-            args=(node["id"], cb_key),
-        )
-
-    if children:
-        st.markdown("**Submaterials**")
-        for child in children:
-            cname = node_name(child)
-            n_child = len(indexes["children_by_parent"].get(child["id"], []))
-            label = cname
-            if n_child:
-                label += f" ({n_child} submaterials)"
-            n_vals = len(attr_rows_for_display(child))
-            if n_vals:
-                label += f"  [{n_vals} values]"
-            st.button(
-                label,
-                key=f"nav_{node['id']}_{child['id']}_{level_index}",
-                on_click=on_nav_child,
-                args=(child["id"],),
-                use_container_width=True,
-            )
-    elif all_children:
-        st.caption("No submaterials match the current filter.")
-    else:
-        st.caption("No submaterials here.")
 # =============================================================================
 # SECTION 8 — BOM HELPERS
 # =============================================================================
@@ -934,7 +941,7 @@ with st.sidebar:
             st.session_state.path_ids = found_path_ids
             st.session_state.root_indexes = None
             st.session_state.search_feedback = ""
-            st.session_state.browse_root = "— select —"
+            st.session_state.browse_root = ""
             st.rerun()
         else:
             st.session_state.search_feedback = "No material found."
@@ -1224,10 +1231,8 @@ with tab_table:
             "Download extracted values (CSV)",
             df.drop(columns=["_id"]).to_csv(index=False),
             file_name=f"{node_name(node)}_extract.csv",
-            mime="text/csv",
-        )
+            mime="text/csv")
 
-# --- TAB 3 ---
 # --- TAB 3 ---
 with tab_compare:
     st.subheader("Compare materials")
@@ -1241,7 +1246,7 @@ with tab_compare:
             node = fetch_material_node(material["id"])
             if not node:
                 continue
-            attr_rows = flatten_all_props(node.get("props") or {})
+            attr_rows = flatten_compare_props(node.get("props") or {})
             for attr_row in attr_rows:
                 compare_parts.append(
                     {
