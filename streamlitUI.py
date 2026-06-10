@@ -132,6 +132,18 @@ def flatten_leaves(obj: Any, prefix: str = "") -> list[dict[str, str]]:
 
     return rows
 
+def flatten_all_props(props: dict[str, Any] | None) -> list[dict[str, str]]:
+    parsed = parse_props(props)
+    rows: list[dict[str, str]] = []
+
+    for key, value in parsed.items():
+        if key in META_KEYS:
+            continue
+        if value in (None, "", {}, []):
+            continue
+        rows.extend(flatten_leaves(value, key))
+
+    return rows
 
 def extract_attribute_rows(props: dict[str, Any]) -> list[dict[str, str]]:
     parsed = parse_props(props)
@@ -651,7 +663,7 @@ def is_in_bill(material_id: str) -> bool:
 
 
 def add_to_bill_from_node(node: dict[str, Any], category: str) -> None:
-    attr_rows = extract_attribute_rows(node.get("props") or {})
+    attr_rows = flatten_all_props(node.get("props") or {})
     entry = {
         "id": node["id"],
         "name": node_name(node),
@@ -834,7 +846,14 @@ with st.sidebar:
         st.divider()
         st.caption("Compare list")
         for m in st.session_state.compare_materials:
-            st.caption(f"• {m['name']}")
+            name_col, reject_col = st.columns([6, 1])
+            with name_col:
+                st.caption(f"• {m['name']}")
+            with reject_col:
+                if st.button("✕", key=f"reject_compare_{m['id']}"):
+                    remove_material_from_compare(m["id"])
+                    st.rerun()
+
         if st.button("Clear compare list", use_container_width=True):
             st.session_state.compare_materials = []
             st.session_state.compare_parts = []
@@ -842,16 +861,16 @@ with st.sidebar:
             st.rerun()
     #end compare list
     st.divider()
-    st.subheader("Bill of materials")
+    st.caption("Bill of materials")
     if not st.session_state.bom:
         st.caption("Empty.")
     else:
         for cat in sorted(st.session_state.bom.keys()):
-            st.markdown(f"**{cat}**")
-            for i, item in enumerate(st.session_state.bom[cat], 1):
+            st.caption(cat)
+            for item in st.session_state.bom[cat]:
                 name_col, reject_col = st.columns([6, 1])
                 with name_col:
-                    st.write(f"{i}. {item['name']}")
+                    st.caption(f"• {item['name']}")
                 with reject_col:
                     if st.button("✕", key=f"reject_bom_{cat}_{item['id']}"):
                         remove_from_bill(item["id"])
@@ -995,7 +1014,7 @@ with tab_table:
         p = parse_props(row["props"])
         mat_name = p.get("name") or row["label"]
         depth = row["depth"]
-        for attr_row in extract_attribute_rows(row["props"] or {}):
+        for attr_row in flatten_all_props(node.get("props") or {}):
             all_rows.append(
                 {
                     "depth": depth,
