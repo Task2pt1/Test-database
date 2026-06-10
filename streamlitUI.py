@@ -43,6 +43,11 @@ FILTER_ATTR_OPTIONS = ["(no filter)", "(any values)", *ATTR_BLOCKS]
 st.markdown(
     """
     <style>
+    .app-title {
+        font-size: 1.75rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
     .crumbs {
         font-size: 0.95rem;
         line-height: 1.6;
@@ -66,7 +71,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
 
 # =============================================================================
 # SECTION 3 — NEO4J CONNECTION
@@ -320,24 +324,18 @@ def has_attr_block(props: dict[str, Any] | None, block: str) -> bool:
     return val not in (None, "", {}, [])
 
 
-def has_any_attribute_values(props: dict[str, Any] | None) -> bool:
-    return bool(extract_attribute_rows(props or {}))
-
-
 def node_passes_submaterial_filter(node: dict[str, Any]) -> bool:
     choice = st.session_state.filter_attr_block
     if choice == "(no filter)":
         return True
     if choice == "(any values)":
-        return has_any_attribute_values(node.get("props"))
-    rows = extract_attribute_rows(node.get("props") or {})
-    return any(
-        r["attribute"] == choice or r["attribute"].startswith(f"{choice}.")
-        for r in rows)
+        return bool(extract_attribute_rows(node.get("props") or {}))
+    return has_attr_block(node.get("props"), choice)
 
 
 def filter_nodes_by_attr(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [n for n in nodes if node_passes_submaterial_filter(n)]
+
 
 def path_to_node(indexes: dict[str, Any], target_id: str) -> list[str]:
     parent_by_id = indexes["parent_by_id"]
@@ -350,14 +348,11 @@ def path_to_node(indexes: dict[str, Any], target_id: str) -> list[str]:
 
 
 def first_filtered_descendant(indexes: dict[str, Any], start_id: str) -> str | None:
-    """First descendant under start_id that passes the sidebar filter (BFS)."""
     start_node = indexes["nodes_by_id"].get(start_id)
     if not start_node:
         return None
-
     if node_passes_submaterial_filter(start_node):
         return start_id
-
     queue = deque([start_id])
     while queue:
         nid = queue.popleft()
@@ -369,60 +364,12 @@ def first_filtered_descendant(indexes: dict[str, Any], start_id: str) -> str | N
 
 
 def apply_filter_auto_dive(indexes: dict[str, Any]) -> bool:
-    """From current search node, jump to first matching child. True if path changed."""
-    if st.session_state.filter_attr_block == "(no filter)":
-        return False
-    if not st.session_state.path_ids:
-        return False
-
-    anchor_id = st.session_state.path_ids[-1]
-    anchor_node = indexes["nodes_by_id"].get(anchor_id)
-    if not anchor_node:
-        return False
-
-    if node_passes_submaterial_filter(anchor_node):
-        return False
-
-    target_id = first_filtered_descendant(indexes, anchor_id)
-    if not target_id or target_id == anchor_id:
-        return False
-
-    full = path_to_node(indexes, target_id)
-    root = st.session_state.path_ids[0]
-    new_path = full[full.index(root) :] if root in full else full
-
-    if new_path == st.session_state.path_ids:
-        return False
-
-    st.session_state.path_ids = new_path
-    return True
-
-def all_filtered_descendants(
-    indexes: dict[str, Any], start_id: str
-) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    queue = deque([start_id])
-    while queue:
-        nid = queue.popleft()
-        node = indexes["nodes_by_id"][nid]
-        if nid != start_id and node_passes_submaterial_filter(node):
-            out.append(node)
-        for child in indexes["children_by_parent"].get(nid, []):
-            queue.append(child["id"])
-    out.sort(key=node_name)
-    return out
-
-def apply_filter_auto_dive(indexes: dict[str, Any]) -> bool:
-    """Dive from current search node into first matching descendant. Returns True if path changed."""
     if st.session_state.filter_attr_block == "(no filter)":
         return False
     if not st.session_state.path_ids:
         return False
     anchor_id = st.session_state.path_ids[-1]
-    anchor_node = indexes["nodes_by_id"].get(anchor_id)
-    if not anchor_node:
-        return False
-    if node_passes_submaterial_filter(anchor_node):
+    if node_passes_submaterial_filter(indexes["nodes_by_id"][anchor_id]):
         return False
     target_id = first_filtered_descendant(indexes, anchor_id)
     if not target_id or target_id == anchor_id:
@@ -434,32 +381,25 @@ def apply_filter_auto_dive(indexes: dict[str, Any]) -> bool:
         return False
     st.session_state.path_ids = new_path
     return True
+
 
 def attr_rows_for_display(node: dict[str, Any]) -> list[dict[str, str]]:
     return extract_attribute_rows(node.get("props") or {})
-    
-def node_passes_submaterial_filter(node: dict[str, Any]) -> bool:
-    choice = st.session_state.filter_attr_block
-    if choice == "(no filter)":
-        return True
-    if choice == "(any values)":
-        return bool(extract_attribute_rows(node.get("props") or {}))
-    return has_attr_block(node.get("props"), choice)
+
 
 def part_compare_key(material_id: str, attribute: str) -> str:
     return f"{material_id}|{attribute}"
 
 
 def is_part_in_compare(material_id: str, attribute: str) -> bool:
-    k = part_compare_key(material_id, attribute)
-    return any(p["key"] == k for p in st.session_state.compare_parts)
+    return any(
+        p["key"] == part_compare_key(material_id, attribute)
+        for p in st.session_state.compare_parts
+    )
 
 
 def add_part_to_compare(
-    material_id: str,
-    material_name: str,
-    attribute: str,
-    value: str,
+    material_id: str, material_name: str, attribute: str, value: str
 ) -> None:
     entry = {
         "key": part_compare_key(material_id, attribute),
@@ -478,21 +418,10 @@ def remove_part_from_compare(key: str) -> None:
     ]
 
 
-def add_block_to_compare(node: dict[str, Any], block_key: str) -> None:
-    props = parse_props(node.get("props"))
-    if block_key not in props:
-        return
-    name = node_name(node)
-    rows = flatten_leaves(props[block_key], block_key)
-    for r in rows:
-        add_part_to_compare(node["id"], name, r["attribute"], r["value"])
-
-
 def render_parts_compare(parts: list[dict[str, str]]) -> None:
     if len(parts) < 2:
         st.caption("Add at least 2 parts to compare (use + on any field).")
         return
-
     cols = st.columns(len(parts))
     for col, part in zip(cols, parts):
         with col:
@@ -500,17 +429,28 @@ def render_parts_compare(parts: list[dict[str, str]]) -> None:
             st.caption(part["attribute"])
             st.write(part["value"])
 
+
+def on_nav_child(child_id: str) -> None:
+    indexes = st.session_state.get("root_indexes")
+    if not indexes or not st.session_state.path_ids:
+        return
+    current_id = st.session_state.path_ids[-1]
+    children = indexes["children_by_parent"].get(current_id, [])
+    if any(c["id"] == child_id for c in children):
+        st.session_state.path_ids.append(child_id)
+
+
 def render_current_node_detail(
     node: dict[str, Any],
     indexes: dict[str, Any],
     *,
     level_index: int = 0,
 ) -> None:
-    props = parse_props(node.get("props"))
     name = node_name(node)
     attr_rows = attr_rows_for_display(node)
-    children = indexes["children_by_parent"].get(node["id"], [])
-    children = filter_nodes_by_attr(children)
+    children = filter_nodes_by_attr(
+        indexes["children_by_parent"].get(node["id"], [])
+    )
     choice = st.session_state.filter_attr_block
 
     if attr_rows:
@@ -535,24 +475,6 @@ def render_current_node_detail(
     else:
         st.caption("No attribute values on this level.")
 
-    for key in ATTR_BLOCKS:
-        if key in props and props[key] not in (None, "", {}, []):
-            with st.expander(
-                f"{key} (structured)",
-                key=f"detail_{node['id']}_{level_index}_{key}",
-            ):
-                val = props[key]
-                if isinstance(val, (dict, list)):
-                    st.json(val)
-                else:
-                    st.write(val)
-                if st.button(
-                    f"Add all {key} fields to compare",
-                    key=f"addblock_{node['id']}_{level_index}_{key}",
-                ):
-                    add_block_to_compare(node, key)
-                    st.rerun()
-
     cb_key = f"bill_{node['id']}_path_{level_index}"
     st.checkbox(
         "Add to bill of materials",
@@ -569,18 +491,21 @@ def render_current_node_detail(
         for child in children:
             cname = node_name(child)
             n_child = len(indexes["children_by_parent"].get(child["id"], []))
-            suffix = f" ({n_child} submaterials)" if n_child else ""
+            label = cname
+            if n_child:
+                label += f" ({n_child} submaterials)"
             if choice not in ("(no filter)", "(any values)") and has_attr_block(
                 child.get("props"), choice
             ):
-                suffix += f" · {choice}"
-            st.markdown(
-                f'<a href="?nav={child["id"]}" target="_self">{html_escape(cname)}</a>'
-                f"{html_escape(suffix)}",
-                unsafe_allow_html=True,
+                label += f" · {choice}"
+            st.button(
+                label,
+                key=f"nav_{node['id']}_{child['id']}_{level_index}",
+                on_click=on_nav_child,
+                args=(child["id"],),
+                use_container_width=True,
             )
-
-
+            
 # =============================================================================
 # SECTION 8 — BOM HELPERS
 # =============================================================================
@@ -626,39 +551,9 @@ def on_bill_toggle(material_id: str, widget_key: str) -> None:
 # =============================================================================
 # SECTION 9 — NAVIGATION
 # =============================================================================
-def handle_breadcrumb_click() -> None:
-    crumb_index = st.query_params.get("crumb")
-    if crumb_index is None:
-        return
-
-    try:
-        idx = int(str(crumb_index))
-    except (TypeError, ValueError):
-        st.query_params.clear()
-        return
-
+def on_crumb_click(idx: int) -> None:
     if st.session_state.path_ids and 0 <= idx < len(st.session_state.path_ids):
         st.session_state.path_ids = st.session_state.path_ids[: idx + 1]
-
-    st.query_params.clear()
-
-
-def handle_child_nav_click() -> None:
-    nav_id = st.query_params.get("nav")
-    if not nav_id:
-        return
-
-    indexes = st.session_state.get("root_indexes")
-    if not indexes or not st.session_state.path_ids:
-        st.query_params.clear()
-        return
-
-    current_id = st.session_state.path_ids[-1]
-    children = indexes["children_by_parent"].get(current_id, [])
-    if any(c["id"] == nav_id for c in children):
-        st.session_state.path_ids.append(nav_id)
-
-    st.query_params.clear()
 
 
 def render_clickable_path(path_ids: list[str], indexes: dict[str, Any]) -> None:
@@ -667,16 +562,14 @@ def render_clickable_path(path_ids: list[str], indexes: dict[str, Any]) -> None:
         return
 
     st.caption("Path")
-    parts: list[str] = []
     for i, label in enumerate(labels):
-        safe_label = html_escape(label)
-        parts.append(f'<a href="?crumb={i}" target="_self">{safe_label}</a>')
-
-    separator = '<span class="crumb-sep">›</span>'
-    st.markdown(
-        f'<div class="crumbs">{separator.join(parts)}</div>',
-        unsafe_allow_html=True,
-    )
+        st.button(
+            label,
+            key=f"crumb_{path_ids[i]}_{i}",
+            on_click=on_crumb_click,
+            args=(i,),
+            use_container_width=True,
+        )
 
 
 def html_escape(value: str) -> str:
@@ -687,7 +580,6 @@ def html_escape(value: str) -> str:
         .replace('"', "&quot;")
         .replace("'", "&#039;")
     )
-
 
 # =============================================================================
 # SECTION 10 — SESSION STATE
@@ -710,15 +602,13 @@ if "compare_parts" not in st.session_state:
 if "show_compare_view" not in st.session_state:
     st.session_state.show_compare_view = False
 
-
 # =============================================================================
 # SECTION 11 — APP STARTUP
 # =============================================================================
-handle_breadcrumb_click()
-handle_child_nav_click()
-
-st.title("Material Ontology Explorer")
-
+st.markdown(
+    '<p class="app-title">Material Ontology Explorer</p>',
+    unsafe_allow_html=True,
+)
 
 # =============================================================================
 # SECTION 12 — SIDEBAR
