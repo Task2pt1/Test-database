@@ -1307,9 +1307,22 @@ with tab_bom:
             height=700,
         )
 
+        bom_export_name = st.text_input(
+            "Export file name",
+            value="bill_of_materials_filtered",
+            key="bom_export_name",
+            help="Enter the CSV file name without .csv",
+        ).strip()
+
+        if not bom_export_name:
+            bom_export_name = "bill_of_materials_filtered"
+
+        if not bom_export_name.lower().endswith(".csv"):
+            bom_export_name = f"{bom_export_name}.csv"
+
         st.download_button(
             "Export filtered BOM to CSV",
             filtered_bom_df.to_csv(index=False),
-            file_name="bill_of_materials_filtered.csv",
+            file_name=bom_export_name,
             mime="text/csv",
         )
