@@ -48,32 +48,89 @@ st.markdown(
         font-weight: 600;
         margin-bottom: 0.5rem;
     }
+
     .crumbs {
         font-size: 0.95rem;
         line-height: 1.6;
         margin: 0.25rem 0 0.75rem 0;
         word-wrap: break-word;
     }
+
     .crumbs a {
         color: inherit;
         text-decoration: none;
         font-weight: 500;
         margin-right: 0.15rem;
     }
+
     .crumbs a:hover {
         text-decoration: underline;
     }
+
     .crumb-sep {
         opacity: 0.6;
         margin: 0 0.25rem;
     }
+
     [data-testid="stForm"] button[kind="formSubmit"] {
         display: none !important;
+    }
+
+    .compare-scroll {
+        overflow-x: auto;
+        overflow-y: auto;
+        max-width: 100%;
+        border: 1px solid rgba(250, 250, 250, 0.10);
+        border-radius: 12px;
+    }
+
+    .compare-table {
+        border-collapse: collapse;
+        table-layout: fixed;
+        width: max-content;
+        min-width: 100%;
+        font-size: 0.88rem;
+    }
+
+    .compare-table th,
+    .compare-table td {
+        border: 1px solid rgba(250, 250, 250, 0.08);
+        padding: 8px 10px;
+        text-align: left;
+        vertical-align: top;
+        white-space: normal;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+    }
+
+    .compare-table th {
+        position: sticky;
+        top: 0;
+        z-index: 3;
+        background: #1f2430;
+    }
+
+    .compare-table .sticky-attr {
+        position: sticky;
+        left: 0;
+        z-index: 2;
+        background: #111827;
+        min-width: 260px;
+        max-width: 260px;
+        width: 260px;
+        font-weight: 600;
+    }
+
+    .compare-table .material-col {
+        min-width: 180px;
+        max-width: 180px;
+        width: 180px;
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
+
 # =============================================================================
 # SECTION 3 — NEO4J CONNECTION
 # =============================================================================
@@ -541,25 +598,33 @@ def render_parts_compare(parts: list[dict[str, str]]) -> None:
         st.caption("No compared attributes yet.")
         return
 
-    compare_df = pd.DataFrame()
+    ordered_material_ids = list(material_names.keys())
 
-    for material_id, material_name in material_names.items():
-        compare_df[material_name] = [
-            rows_by_material[material_id].get(attribute, "")
-            for attribute in all_attributes
-        ]
+    html = ['<div class="compare-scroll"><table class="compare-table">']
+    html.append("<thead><tr>")
+    html.append('<th class="sticky-attr">attribute</th>')
 
-    compare_df["attribute"] = all_attributes
+    for material_id in ordered_material_ids:
+        html.append(
+            f'<th class="material-col">{html_escape(material_names[material_id])}</th>'
+        )
 
-    ordered_cols = list(material_names.values()) + ["attribute"]
-    compare_df = compare_df[ordered_cols]
+    html.append("</tr></thead><tbody>")
 
-    st.dataframe(
-        compare_df,
-        use_container_width=True,
-        hide_index=True,
-        height=700,
-    )
+    for attribute in all_attributes:
+        html.append("<tr>")
+        html.append(f'<td class="sticky-attr">{html_escape(attribute)}</td>')
+
+        for material_id in ordered_material_ids:
+            value = rows_by_material[material_id].get(attribute, "")
+            html.append(f'<td class="material-col">{html_escape(str(value))}</td>')
+
+        html.append("</tr>")
+
+    html.append("</tbody></table></div>")
+
+    st.markdown("Narrow horizontal scroll. Attribute stays pinned on the left.")
+    st.markdown("".join(html), unsafe_allow_html=True)
     #end compare box
 
 def on_nav_child(child_id: str) -> None:
@@ -717,15 +782,76 @@ def render_clickable_path(path_ids: list[str], indexes: dict[str, Any]) -> None:
             use_container_width=True,
         )
 
-
-def html_escape(value: str) -> str:
+def html_escape(value: Any) -> str:
+    s = "" if value is None else str(value)
     return (
-        value.replace("&", "&amp;")
+        s.replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
         .replace('"', "&quot;")
         .replace("'", "&#039;")
     )
+
+
+def build_bom_dataframe() -> pd.DataFrame:
+    bom_rows: list[dict[str, str]] = []
+
+    for category in sorted(st.session_state.bom.keys()):
+        for item in st.session_state.bom[category]:
+            node = fetch_material_node(item["id"])
+            if not node:
+                continue
+
+            row = {
+                "category": category,
+                "material_id": item["id"],
+                "material_name": item["name"],
+            }
+
+            for attr_row in extract_attribute_rows(node.get("props") or {}):
+                row[attr_row["attribute"]] = attr_row["value"]
+
+            bom_rows.append(row)
+
+    if not bom_rows:
+        return pd.DataFrame()
+
+    bom_df = pd.DataFrame(bom_rows)
+    fixed_cols = ["category", "material_id", "material_name"]
+    attr_cols = sorted(c for c in bom_df.columns if c not in fixed_cols)
+    return bom_df[fixed_cols + attr_cols]
+
+
+def filter_bom_dataframe(
+    bom_df: pd.DataFrame,
+    selected_categories: list[str],
+    selected_materials: list[str],
+    selected_attributes: list[str],
+    attribute_mode: str,
+) -> pd.DataFrame:
+    filtered = bom_df.copy()
+
+    if selected_categories:
+        filtered = filtered[filtered["category"].isin(selected_categories)]
+
+    if selected_materials:
+        filtered = filtered[filtered["material_name"].isin(selected_materials)]
+
+    if selected_attributes:
+        existing_selected_attributes = [a for a in selected_attributes if a in filtered.columns]
+
+        if existing_selected_attributes:
+            if attribute_mode == "any selected attribute":
+                mask = filtered[existing_selected_attributes].notna().any(axis=1)
+                filtered = filtered[mask]
+            elif attribute_mode == "all selected attributes":
+                mask = filtered[existing_selected_attributes].notna().all(axis=1)
+                filtered = filtered[mask]
+
+            fixed_cols = ["category", "material_id", "material_name"]
+            filtered = filtered[fixed_cols + existing_selected_attributes]
+
+    return filtered
 
 # =============================================================================
 # SECTION 10 — SESSION STATE
@@ -1014,7 +1140,7 @@ with tab_table:
         p = parse_props(row["props"])
         mat_name = p.get("name") or row["label"]
         depth = row["depth"]
-        for attr_row in flatten_all_props(node.get("props") or {}):
+        for attr_row in flatten_all_props(row["props"] or {}):
             all_rows.append(
                 {
                     "depth": depth,
@@ -1094,43 +1220,53 @@ with tab_compare:
 with tab_bom:
     st.subheader("Export BOM")
 
-    bom_rows: list[dict[str, str]] = []
+    bom_df = build_bom_dataframe()
 
-    for category in sorted(st.session_state.bom.keys()):
-        for item in st.session_state.bom[category]:
-            node = fetch_material_node(item["id"])
-            if not node:
-                continue
-
-            row = {
-                "category": category,
-                "material_id": item["id"],
-                "material_name": item["name"],
-            }
-
-            for attr_row in extract_attribute_rows(node.get("props") or {}):
-                row[attr_row["attribute"]] = attr_row["value"]
-
-            bom_rows.append(row)
-
-    if not bom_rows:
+    if bom_df.empty:
         st.info("No materials in the bill of materials yet.")
     else:
-        bom_df = pd.DataFrame(bom_rows)
         fixed_cols = ["category", "material_id", "material_name"]
-        attr_cols = sorted(c for c in bom_df.columns if c not in fixed_cols)
-        bom_df = bom_df[fixed_cols + attr_cols]
+        attr_cols = [c for c in bom_df.columns if c not in fixed_cols]
+
+        selected_categories = st.multiselect(
+            "Filter categories",
+            options=sorted(bom_df["category"].dropna().unique().tolist()),
+        )
+
+        selected_materials = st.multiselect(
+            "Filter materials",
+            options=sorted(bom_df["material_name"].dropna().unique().tolist()),
+        )
+
+        selected_attributes = st.multiselect(
+            "Keep only these attributes in table/export",
+            options=sorted(attr_cols),
+        )
+
+        attribute_mode = st.radio(
+            "Attribute row filter",
+            options=["no row filter", "any selected attribute", "all selected attributes"],
+            horizontal=True,
+        )
+
+        filtered_bom_df = filter_bom_dataframe(
+            bom_df=bom_df,
+            selected_categories=selected_categories,
+            selected_materials=selected_materials,
+            selected_attributes=selected_attributes,
+            attribute_mode=attribute_mode,
+        )
 
         st.dataframe(
-            bom_df,
+            filtered_bom_df,
             use_container_width=True,
             hide_index=True,
             height=700,
         )
 
         st.download_button(
-            "Export BOM to CSV",
-            bom_df.to_csv(index=False),
-            file_name="bill_of_materials.csv",
+            "Export filtered BOM to CSV",
+            filtered_bom_df.to_csv(index=False),
+            file_name="bill_of_materials_filtered.csv",
             mime="text/csv",
         )
