@@ -334,9 +334,26 @@ def node_passes_submaterial_filter(node: dict[str, Any]) -> bool:
         return bool(extract_attribute_rows(node.get("props") or {}))
     return has_attr_block(node.get("props"), choice)
 
-
 def filter_nodes_by_attr(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [n for n in nodes if node_passes_submaterial_filter(n)]
+
+
+def visible_submaterials(indexes: dict[str, Any], parent_id: str) -> list[dict[str, Any]]:
+    direct_children = indexes["children_by_parent"].get(parent_id, [])
+
+    if st.session_state.filter_attr_block == "(no filter)":
+        return direct_children
+
+    visible: list[dict[str, Any]] = []
+
+    for child in direct_children:
+        if node_passes_submaterial_filter(child):
+            visible.append(child)
+        else:
+            visible.extend(visible_submaterials(indexes, child["id"]))
+
+    visible.sort(key=node_name)
+    return visible
 
 
 def path_to_node(indexes: dict[str, Any], target_id: str) -> list[str]:
@@ -489,11 +506,12 @@ def on_nav_child(child_id: str) -> None:
     indexes = st.session_state.get("root_indexes")
     if not indexes or not st.session_state.path_ids:
         return
-    current_id = st.session_state.path_ids[-1]
-    children = indexes["children_by_parent"].get(current_id, [])
-    if any(c["id"] == child_id for c in children):
-        st.session_state.path_ids.append(child_id)
 
+    current_id = st.session_state.path_ids[-1]
+    allowed_ids = {n["id"] for n in visible_submaterials(indexes, current_id)}
+
+    if child_id in allowed_ids:
+        st.session_state.path_ids = path_to_node(indexes, child_id)
 
 def render_current_node_detail(
     node: dict[str, Any],
@@ -884,16 +902,16 @@ with tab_path:
                 on_change=on_bill_toggle,
                 args=(pn["id"], cb_key),
             )
-                #end if current display
-    
+        
     current = path_nodes[-1]
-    children = filter_nodes_by_attr(
-        indexes["children_by_parent"].get(current["id"], [])
-    )
+    children = visible_submaterials(indexes, current["id"])
 
     st.markdown("**Submaterials**")
     if not children:
-        st.caption("No submaterials here.")
+        if st.session_state.filter_attr_block == "(no filter)":
+            st.caption("No submaterials here.")
+        else:
+            st.caption("No submaterials match the current filter.")
     else:
         for child in children:
             cname = node_name(child)
@@ -911,7 +929,6 @@ with tab_path:
                 args=(child["id"],),
                 use_container_width=True,
             )
-
 
 # --- TAB 2 ---
 with tab_table:
