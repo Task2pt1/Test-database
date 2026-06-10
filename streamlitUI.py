@@ -922,11 +922,18 @@ with st.sidebar:
 
     if browse_pick != st.session_state.browse_root:
         st.session_state.browse_root = browse_pick
+    
         if browse_pick:
             st.session_state.has_searched = True
             st.session_state.path_ids = [browse_pick]
             st.session_state.root_indexes = None
             st.session_state.search_feedback = ""
+        else:
+            st.session_state.has_searched = False
+            st.session_state.path_ids = []
+            st.session_state.root_indexes = None
+            st.session_state.search_feedback = ""
+    
         st.rerun()
         #end dropdoen roots
 
