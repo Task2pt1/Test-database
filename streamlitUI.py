@@ -492,14 +492,43 @@ def on_attr_group_toggle(material_id: str, group_name: str) -> None:
 
 def render_parts_compare(parts: list[dict[str, str]]) -> None:
     if len(parts) < 2:
-        st.caption("Add at least 2 parts to compare (use + on any field).")
+        st.caption("Add at least 2 materials to compare.")
         return
-    cols = st.columns(len(parts))
-    for col, part in zip(cols, parts):
-        with col:
-            st.markdown(f"**{part['material_name']}**")
-            st.caption(part["attribute"])
-            st.write(part["value"])
+
+    rows_by_material: dict[str, dict[str, str]] = defaultdict(dict)
+    material_names: dict[str, str] = {}
+
+    for part in parts:
+        material_id = part["material_id"]
+        material_names[material_id] = part["material_name"]
+        rows_by_material[material_id][part["attribute"]] = part["value"]
+
+    all_attributes = sorted(
+        {
+            attribute
+            for material_rows in rows_by_material.values()
+            for attribute in material_rows.keys()
+        }
+    )
+
+    if not all_attributes:
+        st.caption("No compared attributes yet.")
+        return
+
+    compare_df = pd.DataFrame({"attribute": all_attributes})
+
+    for material_id, material_name in material_names.items():
+        compare_df[material_name] = [
+            rows_by_material[material_id].get(attribute, "")
+            for attribute in all_attributes
+        ]
+
+    st.dataframe(
+        compare_df,
+        use_container_width=True,
+        hide_index=True,
+        height=700,
+    )
     #end compare box
 
 def on_nav_child(child_id: str) -> None:
@@ -842,8 +871,8 @@ subtree = get_subtree_rows_from_indexes(current_id, indexes)
 # =============================================================================
 # SECTION 14 — MAIN TABS
 # =============================================================================
-tab_path, tab_table, tab_bom = st.tabs(
-    ["Path + explore", "All values (table)", "Pick for BOM"])
+tab_path, tab_table, tab_bom, tab_compare = st.tabs(
+    ["Path + explore", "All values (table)", "Export BOM", "Compare"])
 
 # --- TAB 1 ---
 with tab_path:
@@ -859,11 +888,10 @@ with tab_path:
     else:
         st.subheader("Explore")
 
-    if st.session_state.show_compare_view and len(st.session_state.compare_parts) >= 2:
-        st.markdown("**Comparison**")
-        render_parts_compare(st.session_state.compare_parts)
-        st.divider()
-
+    #
+    if st.session_state.compare_materials:
+        st.caption("view compared materials.")
+        
     for i, pn in enumerate(path_nodes):
         is_current = i == len(path_nodes) - 1
         name = node_name(pn)
@@ -993,8 +1021,38 @@ with tab_table:
             mime="text/csv",
         )
 
-
 # --- TAB 3 ---
+with tab_compare:
+    st.subheader("Compare materials")
+
+    if len(st.session_state.compare_materials) < 2:
+        st.info("Select at least 2 materials with the Compare checkbox.")
+    else:
+        indexes = st.session_state.get("root_indexes")
+        compare_parts: list[dict[str, str]] = []
+
+        if indexes:
+            for material in st.session_state.compare_materials:
+                node = indexes["nodes_by_id"].get(material["id"])
+                if not node:
+                    continue
+                for attr_row in extract_attribute_rows(node.get("props") or {}):
+                    compare_parts.append(
+                        {
+                            "key": part_compare_key(material["id"], attr_row["attribute"]),
+                            "material_id": material["id"],
+                            "material_name": material["name"],
+                            "attribute": attr_row["attribute"],
+                            "value": attr_row["value"],
+                        }
+                    )
+
+        if not compare_parts:
+            st.info("No comparable attributes found for the selected materials in this root.")
+        else:
+            render_parts_compare(compare_parts)
+
+# --- TAB 4 ---
 with tab_bom:
     st.subheader("Pick materials")
     scope = st.radio(
