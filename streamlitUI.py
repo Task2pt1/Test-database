@@ -643,8 +643,8 @@ with st.sidebar:
         st.rerun()
 
     with st.form("global_material_search", clear_on_submit=False):
-    search_query = st.text_input("Search", placeholder="")
-    search_submitted = st.form_submit_button("Search")
+        search_query = st.text_input("query", placeholder="", label_visibility="collapsed")
+        search_submitted = st.form_submit_button("Go")
 
     if search_submitted:
         found_path_ids = search_material_path(search_query)
