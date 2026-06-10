@@ -212,7 +212,7 @@ def extract_attribute_rows(props: dict[str, Any]) -> list[dict[str, str]]:
         rows.extend(flatten_leaves(parsed[key], key))
 
     for k, v in parsed.items():
-        if k in META_KEYS or k in ATTR_BLOCKS:
+        if k in META_KEYS or k in ATTR_BLOCKS or v in (None, "", {}, []):
             continue
         rows.extend(flatten_leaves(v, k))
 
@@ -1066,18 +1066,23 @@ with tab_path:
             title += f"  ({len(all_children)} submaterials)"
         if attr_rows:
             title += f"  [{len(attr_rows)} values]"
+        #expander central
+    
+            with st.expander(title, expanded=is_current):
+            attr_groups = grouped_attr_rows_for_display(pn)
 
-        with st.expander(title, expanded=is_current):
-            if attr_rows:
-                st.dataframe(
-                    pd.DataFrame(attr_rows),
-                    use_container_width=True,
-                    hide_index=True,
-                    height=min(38 + 28 * len(attr_rows), 280),
-                )
+            if attr_groups:
+                for group_name, group_rows in attr_groups.items():
+                    st.markdown(f"**{group_name}**")
+                    st.dataframe(
+                        pd.DataFrame(group_rows),
+                        use_container_width=True,
+                        hide_index=True,
+                        height=min(38 + 28 * len(group_rows), 260),
+                    )
             else:
                 st.caption("No attribute values on this node.")
-            #if current display
+
             cmp_key = f"cmp_{pn['id']}_{i}"
             st.checkbox(
                 "Compare",
@@ -1086,6 +1091,7 @@ with tab_path:
                 on_change=on_compare_toggle,
                 args=(pn["id"], name, cmp_key),
             )
+
             cb_key = f"bill_{pn['id']}_path_{i}"
             st.checkbox(
                 "Add to bill of materials",
@@ -1094,7 +1100,8 @@ with tab_path:
                 on_change=on_bill_toggle,
                 args=(pn["id"], cb_key),
             )
-    #
+        
+    #end expander
     
     current = path_nodes[-1]
     children = visible_submaterials(indexes, current["id"])
@@ -1128,7 +1135,7 @@ with tab_path:
                 key=f"nav_{current['id']}_{child['id']}",
                 use_container_width=True,
             ):
-                on_nav_child(child["id"])
+                st.session_state.path_ids = path_to_node(indexes, child["id"])
                 st.rerun()
                 
 # --- TAB 2 ---
