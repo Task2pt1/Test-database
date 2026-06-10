@@ -48,6 +48,9 @@ st.markdown(
         font-weight: 600;
         margin-bottom: 0.5rem;
     }
+    div[data-testid="stFormSubmitInstruction"] {
+        display: none;
+    }
     .crumbs {
         font-size: 0.95rem;
         line-height: 1.6;
@@ -71,7 +74,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
 # =============================================================================
 # SECTION 3 — NEO4J CONNECTION
 # =============================================================================
@@ -616,9 +618,9 @@ with st.sidebar:
     with st.form("global_material_search", clear_on_submit=False):
         search_query = st.text_input(
             "Search",
-            placeholder="Search by name, id, or code",
+            placeholder="",
         )
-        search_submitted = st.form_submit_button("Search", use_container_width=True)
+        search_submitted = st.form_submit_button("Search--name, id, or code", use_container_width=True)
     if search_submitted:
         found_path_ids = search_material_path(search_query)
         if found_path_ids:
