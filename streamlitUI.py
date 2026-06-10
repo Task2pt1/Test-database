@@ -642,7 +642,8 @@ with st.sidebar:
             st.session_state.search_feedback = ""
         st.rerun()
 
-    search_query = st.text_input("Search", placeholder="", label_visibility="collapsed")
+    search_query = st.text_input("Search", placeholder="")
+    search_submitted = st.form_submit_button("Search")
 
     if search_submitted:
         found_path_ids = search_material_path(search_query)
