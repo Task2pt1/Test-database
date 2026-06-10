@@ -647,7 +647,7 @@ def render_clickable_path(path_ids: list[str], indexes: dict[str, Any]) -> None:
     if not labels:
         return
 
-    st.caption("Path")
+    st.caption("Path - navigate center-view submaterials")
     for i, label in enumerate(labels):
         st.button(
             label,
