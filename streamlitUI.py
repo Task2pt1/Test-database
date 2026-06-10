@@ -1,6 +1,9 @@
 # streamlitUI.py
-# Neo4j -> global search + cached level-0 subtree fetch -> Streamlit UI
+# Neo4j -> global search + cached subtree fetch -> Streamlit UI
 
+# =============================================================================
+# SECTION 1 — SETUP (imports, page config, constants)
+# =============================================================================
 from __future__ import annotations
 
 import json
@@ -32,7 +35,9 @@ ATTR_BLOCKS = (
 META_KEYS = {"name", "id", "code", "database", "vector", "placement"}
 
 
-# ADDED: breadcrumb styling that looks like inline clickable text, not box buttons
+# =============================================================================
+# SECTION 2 — CSS (breadcrumb + stack panel styling)
+# =============================================================================
 st.markdown(
     """
     <style>
@@ -55,15 +60,20 @@ st.markdown(
         opacity: 0.6;
         margin: 0 0.25rem;
     }
+    .stack-panel {
+        border-left: 3px solid rgba(250, 250, 250, 0.15);
+        padding-left: 0.75rem;
+        margin-bottom: 0.75rem;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 
-# -----------------------------
-# Neo4j connection
-# -----------------------------
+# =============================================================================
+# SECTION 3 — NEO4J CONNECTION
+# =============================================================================
 @st.cache_resource
 def get_driver() -> Driver:
     return GraphDatabase.driver(
@@ -83,9 +93,9 @@ def run_query(query: str, params: dict[str, Any] | None = None) -> list[dict[str
         return [r.data() for r in session.run(query, params or {})]
 
 
-# -----------------------------
-# Property parsing
-# -----------------------------
+# =============================================================================
+# SECTION 4 — PROPERTY PARSING (JSON props -> flat attribute rows)
+# =============================================================================
 def parse_stored(v: Any) -> Any:
     if isinstance(v, str):
         s = v.strip()
@@ -146,9 +156,9 @@ def node_name(node: dict[str, Any]) -> str:
     return props.get("name") or node.get("label") or node.get("id") or "Unknown"
 
 
-# -----------------------------
-# Neo4j fetches
-# -----------------------------
+# =============================================================================
+# SECTION 5 — NEO4J FETCHES (roots, subtree, search)
+# =============================================================================
 def get_root_nodes() -> list[dict[str, str]]:
     return run_query(
         f"""
@@ -184,7 +194,6 @@ def fetch_root_subtree(root_id: str) -> list[dict[str, Any]]:
 
 
 def search_material_path(query: str) -> list[str]:
-    # ADDED: global search across all Material nodes by your name / id / code
     q = query.strip().lower()
     if not q:
         return []
@@ -225,9 +234,9 @@ def search_material_path(query: str) -> list[str]:
     return rows[0].get("path_ids") or []
 
 
-# -----------------------------
-# In-memory indexes
-# -----------------------------
+# =============================================================================
+# SECTION 6 — IN-MEMORY INDEXES (fast parent/child lookup)
+# =============================================================================
 def build_subtree_indexes(rows: list[dict[str, Any]], root_id: str) -> dict[str, Any]:
     nodes_by_id: dict[str, dict[str, Any]] = {}
     children_by_parent: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -305,9 +314,88 @@ def get_subtree_rows_from_indexes(node_id: str, indexes: dict[str, Any]) -> list
     return rows
 
 
-# -----------------------------
-# BOM helpers
-# -----------------------------
+# =============================================================================
+# SECTION 7 — LCIA + COMPACT DISPLAY HELPERS
+# =============================================================================
+def has_lcia(props: dict[str, Any] | None) -> bool:
+    parsed = parse_props(props)
+    lcia = parsed.get("lcia")
+    return lcia not in (None, "", {}, [])
+
+
+def filter_nodes_lcia(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not st.session_state.filter_lcia_only:
+        return nodes
+    return [n for n in nodes if has_lcia(n.get("props"))]
+
+
+def attr_rows_for_display(node: dict[str, Any]) -> list[dict[str, str]]:
+    rows = extract_attribute_rows(node.get("props") or {})
+    if st.session_state.filter_lcia_only:
+        rows = [
+            r
+            for r in rows
+            if r["attribute"] == "lcia" or r["attribute"].startswith("lcia.")
+        ]
+    return rows
+
+
+def lcia_field_map(node: dict[str, Any]) -> dict[str, str]:
+    rows = extract_attribute_rows(node.get("props") or {})
+    return {
+        r["attribute"]: r["value"]
+        for r in rows
+        if r["attribute"] == "lcia" or r["attribute"].startswith("lcia.")
+    }
+
+
+def render_compact_attributes(node: dict[str, Any], *, current: bool = False) -> None:
+    name = node_name(node)
+    rows = attr_rows_for_display(node)
+    tag = " ← you are here" if current else ""
+
+    st.markdown(f"**{name}**{tag}")
+    if not rows:
+        st.caption("No values on this node.")
+        return
+
+    df = pd.DataFrame(rows)
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        height=min(38 + 28 * len(rows), 220),
+    )
+
+
+def render_lcia_compare(nodes: list[dict[str, Any]]) -> None:
+    if len(nodes) < 2:
+        st.caption("Need at least 2 materials on the path to compare.")
+        return
+
+    maps = [lcia_field_map(n) for n in nodes]
+    all_keys = sorted({k for m in maps for k in m})
+
+    if not all_keys:
+        st.caption("No LCIA fields on these materials.")
+        return
+
+    cols = st.columns(len(nodes))
+    for col, node, fmap in zip(cols, nodes, maps):
+        with col:
+            st.markdown(f"**{node_name(node)}**")
+            col_rows = [{"field": k, "value": fmap.get(k, "—")} for k in all_keys]
+            st.dataframe(
+                pd.DataFrame(col_rows),
+                use_container_width=True,
+                hide_index=True,
+                height=min(38 + 28 * len(all_keys), 320),
+            )
+
+
+# =============================================================================
+# SECTION 8 — BOM HELPERS (bill of materials; id kept silently for export)
+# =============================================================================
 def is_in_bill(material_id: str) -> bool:
     for items in st.session_state.bom.values():
         if any(b["id"] == material_id for b in items):
@@ -347,11 +435,10 @@ def on_bill_toggle(material_id: str, widget_key: str) -> None:
         remove_from_bill(material_id)
 
 
-# -----------------------------
-# Query-param breadcrumb clicks
-# -----------------------------
+# =============================================================================
+# SECTION 9 — NAVIGATION (breadcrumb + drill-down links)
+# =============================================================================
 def handle_breadcrumb_click() -> None:
-    # ADDED: breadcrumb click is handled via query params so the path looks like links, not buttons
     crumb_index = st.query_params.get("crumb")
     if crumb_index is None:
         return
@@ -368,9 +455,25 @@ def handle_breadcrumb_click() -> None:
     st.query_params.clear()
 
 
+def handle_child_nav_click() -> None:
+    nav_id = st.query_params.get("nav")
+    if not nav_id:
+        return
+
+    indexes = st.session_state.get("root_indexes")
+    if not indexes or not st.session_state.path_ids:
+        st.query_params.clear()
+        return
+
+    current_id = st.session_state.path_ids[-1]
+    children = indexes["children_by_parent"].get(current_id, [])
+    if any(c["id"] == nav_id for c in children):
+        st.session_state.path_ids.append(nav_id)
+
+    st.query_params.clear()
+
+
 def render_clickable_path(path_ids: list[str], indexes: dict[str, Any]) -> None:
-    # REMOVED: boxed path buttons
-    # ADDED: inline breadcrumb links using material names only
     labels = get_path_labels_from_indexes(path_ids, indexes["nodes_by_id"])
     if not labels:
         return
@@ -398,111 +501,40 @@ def html_escape(value: str) -> str:
     )
 
 
-# -----------------------------
-# UI rendering
-# -----------------------------
-def render_material_node(
-    node: dict[str, Any],
-    indexes: dict[str, Any],
-    *,
-    depth: int = 0,
-    expanded: bool = False,
-    path: str = "0",
-) -> None:
-    props = parse_props(node.get("props"))
-    name = props.get("name") or node.get("label") or node.get("id")
-    attr_rows = extract_attribute_rows(node.get("props") or {})
-    children = indexes["children_by_parent"].get(node["id"], [])
-
-    indent = "　" * depth
-    title = f"{indent}{name}"
-    if children:
-        title += f"  ({len(children)} submaterials)"
-    if attr_rows:
-        title += f"  [{len(attr_rows)} values]"
-
-    with st.expander(title, expanded=expanded):
-        st.caption(
-            f"id: `{props.get('id', node['id'])}` · "
-            f"code: `{props.get('code', '')}` · "
-            f"database: `{props.get('database', '')}`"
-        )
-
-        cb_key = f"bill_{node['id']}_{path}"
-        st.checkbox(
-            "Add to bill of materials",
-            value=is_in_bill(node["id"]),
-            key=cb_key,
-            on_change=on_bill_toggle,
-            args=(node["id"], cb_key),
-        )
-
-        if attr_rows:
-            st.markdown("**Attribute values**")
-            wide_row = {"material": name}
-            wide_row.update({r["attribute"]: r["value"] for r in attr_rows})
-            st.dataframe(
-                pd.DataFrame([wide_row]),
-                use_container_width=True,
-                hide_index=True,
-            )
-        else:
-            st.caption("No attribute values on this node.")
-
-        for key in ATTR_BLOCKS:
-            if key in props and props[key] not in (None, "", {}, []):
-                with st.expander(
-                    f"{key} (structured)",
-                    key=f"struct_{node['id']}_{path}_{key}",
-                ):
-                    val = props[key]
-                    if isinstance(val, (dict, list)):
-                        st.json(val)
-                    else:
-                        st.write(val)
-
-        if children:
-            st.markdown("**Submaterials**")
-            for i, child in enumerate(children):
-                render_material_node(
-                    child,
-                    indexes,
-                    depth=depth + 1,
-                    expanded=False,
-                    path=f"{path}_{i}",
-                )
-
-
-# -----------------------------
-# Session state
-# -----------------------------
-if "path_ids" not in st.session_state:
+# =============================================================================
+# SECTION 10 — SESSION STATE (runs once per browser session)
+# =============================================================================
+if "has_searched" not in st.session_state:
+    st.session_state.has_searched = False
     st.session_state.path_ids = []
+    st.session_state.root_indexes = None
+    st.session_state.search_feedback = ""
 
 if "bom" not in st.session_state:
     st.session_state.bom = {}
 
-if "root_indexes" not in st.session_state:
-    st.session_state.root_indexes = None
+if "filter_lcia_only" not in st.session_state:
+    st.session_state.filter_lcia_only = False
 
-if "search_feedback" not in st.session_state:
-    st.session_state.search_feedback = ""
+if "compare_lcia" not in st.session_state:
+    st.session_state.compare_lcia = False
 
 
-# ADDED: handle breadcrumb click before the rest of the app renders
+# =============================================================================
+# SECTION 11 — APP STARTUP (handle link clicks, then draw title)
+# =============================================================================
 handle_breadcrumb_click()
+handle_child_nav_click()
 
 st.title("Material Ontology Explorer")
 
 
-# -----------------------------
-# Sidebar
-# -----------------------------
+# =============================================================================
+# SECTION 12 — SIDEBAR (search, filters, path, bill of materials)
+# =============================================================================
 with st.sidebar:
     st.header("Navigation")
 
-    # REMOVED: Root dropdown entirely
-    # ADDED: Search is now the first control at the top-left
     with st.form("global_material_search", clear_on_submit=False):
         search_query = st.text_input(
             "Search",
@@ -513,7 +545,9 @@ with st.sidebar:
     if search_submitted:
         found_path_ids = search_material_path(search_query)
         if found_path_ids:
+            st.session_state.has_searched = True
             st.session_state.path_ids = found_path_ids
+            st.session_state.root_indexes = None
             st.session_state.search_feedback = ""
             st.rerun()
         else:
@@ -522,8 +556,16 @@ with st.sidebar:
     if st.session_state.search_feedback:
         st.caption(st.session_state.search_feedback)
 
-    # ADDED: default to the first level-0 node so the center still has content with no search yet
-    if st.session_state.path_ids:
+    st.session_state.filter_lcia_only = st.checkbox(
+        "Only show materials with LCIA",
+        value=st.session_state.filter_lcia_only,
+    )
+    st.session_state.compare_lcia = st.checkbox(
+        "Compare LCIA side by side (last 2 on path)",
+        value=st.session_state.compare_lcia,
+    )
+
+    if st.session_state.has_searched and st.session_state.path_ids:
         root_id = st.session_state.path_ids[0]
         root_rows = fetch_root_subtree(root_id)
         indexes = build_subtree_indexes(root_rows, root_id)
@@ -553,11 +595,15 @@ with st.sidebar:
         st.rerun()
 
 
-# -----------------------------
-# Current selection
-# -----------------------------
-if not st.session_state.path_ids or not st.session_state.root_indexes:
-    st.info("Search for a material.")
+# =============================================================================
+# SECTION 13 — MAIN AREA GATE (wait until user searches)
+# =============================================================================
+if not st.session_state.has_searched or not st.session_state.path_ids:
+    st.info("Search for a material by name, id, or code to get started.")
+    st.stop()
+
+if not st.session_state.root_indexes:
+    st.info("Loading material data…")
     st.stop()
 
 indexes = st.session_state.root_indexes
@@ -578,22 +624,71 @@ st.caption(
 )
 
 
-# -----------------------------
-# Main tabs
-# -----------------------------
+# =============================================================================
+# SECTION 14 — MAIN TABS
+# =============================================================================
 tab_tree, tab_table, tab_bom = st.tabs(
     ["Submaterial tree + values", "Flat extraction table", "Pick for BOM"]
 )
 
-with tab_tree:
-    st.subheader("Submaterials and attribute values")
-    st.caption(
-        "Each row is a Material node from Neo4j. "
-        "Submaterials = HAS_CHILD edges. "
-        "Values = properties on that node (engineering, activity, notes, …)."
-    )
-    render_material_node(node, indexes, depth=0, expanded=True)
 
+# --- TAB 1: Path stack + drill-down ---
+with tab_tree:
+    st.subheader("Materials on your path")
+    st.caption(
+        "Each level stays visible as you go deeper. "
+        "Use submaterial links below to drill down."
+    )
+
+    path_nodes = [
+        indexes["nodes_by_id"][nid]
+        for nid in st.session_state.path_ids
+        if nid in indexes["nodes_by_id"]
+    ]
+
+    if st.session_state.compare_lcia and len(path_nodes) >= 2:
+        st.markdown("**LCIA comparison**")
+        render_lcia_compare(path_nodes[-2:])
+
+    for i, pn in enumerate(path_nodes):
+        with st.container():
+            st.markdown('<div class="stack-panel">', unsafe_allow_html=True)
+            render_compact_attributes(pn, current=(i == len(path_nodes) - 1))
+
+            cb_key = f"bill_{pn['id']}_path_{i}"
+            st.checkbox(
+                "Add to bill of materials",
+                value=is_in_bill(pn["id"]),
+                key=cb_key,
+                on_change=on_bill_toggle,
+                args=(pn["id"], cb_key),
+            )
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+    st.divider()
+    st.markdown("**Submaterials**")
+
+    children = indexes["children_by_parent"].get(current_id, [])
+    children = filter_nodes_lcia(children)
+
+    if not children:
+        st.caption("No submaterials here.")
+    else:
+        for child in children:
+            name = node_name(child)
+            n_child = len(indexes["children_by_parent"].get(child["id"], []))
+            suffix = f" ({n_child} submaterials)" if n_child else ""
+            if has_lcia(child.get("props")):
+                suffix += " · LCIA"
+            st.markdown(
+                f'<a href="?nav={child["id"]}" target="_self">{html_escape(name)}</a>'
+                f"{html_escape(suffix)}",
+                unsafe_allow_html=True,
+            )
+
+
+# --- TAB 2: Flat table ---
 with tab_table:
     st.subheader("All materials under this node — every extracted value")
     all_rows: list[dict[str, str]] = []
@@ -630,6 +725,8 @@ with tab_table:
             mime="text/csv",
         )
 
+
+# --- TAB 3: Pick for BOM ---
 with tab_bom:
     st.subheader("Pick materials")
     scope = st.radio(
