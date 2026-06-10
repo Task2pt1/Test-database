@@ -475,21 +475,19 @@ def render_current_node_detail(
     else:
         st.caption("No attribute values on this level.")
 
-    col_cmp, col_bom = st.columns([1, 9])
-    with col_cmp:
-        cmp_label = "⇄" if not st.session_state.show_compare_view else "⇄ on"
-        if st.button(cmp_label, key=f"cmp_{node['id']}_{level_index}", help="Toggle comparison"):
-            st.session_state.show_compare_view = not st.session_state.show_compare_view
-            st.rerun()
-    with col_bom:
-        cb_key = f"bill_{node['id']}_path_{level_index}"
-        st.checkbox(
-            "Add to bill of materials",
-            value=is_in_bill(node["id"]),
-            key=cb_key,
-            on_change=on_bill_toggle,
-            args=(node["id"], cb_key),
-        )
+    st.session_state.show_compare_view = st.checkbox(
+        "Compare",
+        value=st.session_state.show_compare_view,
+        key=f"cmp_{node['id']}_{level_index}",
+    )
+    cb_key = f"bill_{node['id']}_path_{level_index}"
+    st.checkbox(
+        "Add to bill of materials",
+        value=is_in_bill(node["id"]),
+        key=cb_key,
+        on_change=on_bill_toggle,
+        args=(node["id"], cb_key),
+    )
 
     st.markdown("**Submaterials**")
     if not children:
