@@ -523,19 +523,11 @@ with st.sidebar:
         st.caption(st.session_state.search_feedback)
 
     # ADDED: default to the first level-0 node so the center still has content with no search yet
-    if not st.session_state.path_ids:
-        roots = get_root_nodes()
-        if not roots:
-            st.error("No Material nodes in database.")
-            st.stop()
-        st.session_state.path_ids = [roots[0]["id"]]
-
+    if st.session_state.path_ids:
     root_id = st.session_state.path_ids[0]
     root_rows = fetch_root_subtree(root_id)
     indexes = build_subtree_indexes(root_rows, root_id)
     st.session_state.root_indexes = indexes
-
-    # ADDED: clickable path appears after level 0 is fetched
     render_clickable_path(st.session_state.path_ids, indexes)
 
     st.divider()
