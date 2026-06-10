@@ -749,23 +749,51 @@ with tab_path:
         render_parts_compare(st.session_state.compare_parts)
         st.divider()
 
-    if len(path_nodes) > 1:
-        st.markdown("**Above you**")
-        for i, pn in enumerate(path_nodes[:-1]):
-            pname = node_name(pn)
-            n_child = len(indexes["children_by_parent"].get(pn["id"], []))
-            bits = [html_escape(pname)]
-            if n_child:
-                bits.append(f"({n_child} submaterials)")
-            st.markdown(
-                f'<a href="?crumb={i}" target="_self">{" · ".join(bits)}</a>',
-                unsafe_allow_html=True,
-            )
+    filter_on = st.session_state.filter_attr_block != "(no filter)"
+    search_root_id = st.session_state.path_ids[0]
+    search_root = indexes["nodes_by_id"][search_root_id]
 
-    st.divider()
-    st.markdown("**Current material**")
-    render_current_node_detail(path_nodes[-1], indexes, level_index=len(path_nodes) - 1)
+    # ── FILTER ON: center stack = only submaterials that pass the filter ──
+    if filter_on:
+        matches = all_filtered_descendants(indexes, search_root_id)
+        label = st.session_state.filter_attr_block
+        if label == "(any values)":
+            label = "values"
 
+        st.markdown(
+            f"**{node_name(search_root)} — submaterials with {label}**"
+        )
+        st.caption(f"{len(matches)} material(s)")
+
+        if not matches:
+            st.caption("No matching submaterials under this search.")
+        else:
+            for i, m in enumerate(matches):
+                with st.container():
+                    st.markdown('<div class="stack-panel">', unsafe_allow_html=True)
+                    render_current_node_detail(m, indexes, level_index=i)
+                    st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── NO FILTER: normal path + current material only ──
+    else:
+        if len(path_nodes) > 1:
+            st.markdown("**Above you**")
+            for i, pn in enumerate(path_nodes[:-1]):
+                pname = node_name(pn)
+                n_child = len(indexes["children_by_parent"].get(pn["id"], []))
+                bits = [html_escape(pname)]
+                if n_child:
+                    bits.append(f"({n_child} submaterials)")
+                st.markdown(
+                    f'<a href="?crumb={i}" target="_self">{" · ".join(bits)}</a>',
+                    unsafe_allow_html=True,
+                )
+
+        st.divider()
+        st.markdown("**Current material**")
+        render_current_node_detail(
+            path_nodes[-1], indexes, level_index=len(path_nodes) - 1
+        )
 
 # --- TAB 2 ---
 with tab_table:
