@@ -756,15 +756,15 @@ with st.sidebar:
         
     #compare list
     if st.session_state.compare_materials:
-    st.divider()
-    st.caption("Compare list")
-    for m in st.session_state.compare_materials:
-        st.caption(f"• {m['name']}")
-    if st.button("Clear compare list", use_container_width=True):
-        st.session_state.compare_materials = []
-        st.session_state.compare_parts = []
-        st.session_state.show_compare_view = False
-        st.rerun()
+        st.divider()
+        st.caption("Compare list")
+        for m in st.session_state.compare_materials:
+            st.caption(f"• {m['name']}")
+        if st.button("Clear compare list", use_container_width=True):
+            st.session_state.compare_materials = []
+            st.session_state.compare_parts = []
+            st.session_state.show_compare_view = False
+            st.rerun()
     #end compare list
     st.divider()
     st.subheader("Bill of materials")
