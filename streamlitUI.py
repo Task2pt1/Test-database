@@ -616,13 +616,18 @@ st.markdown(
 with st.sidebar:
     st.header("Navigation")
 
+    #roo dropdown
     roots = get_root_nodes()
-    root_labels = [r["label"] for r in roots]
-    root_ids = [r["id"] for r in roots]
-    browse_options = ["— select —"] + root_labels
+    root_map = {r["id"]: r["label"] for r in roots}
+    browse_options = [""] + list(root_map.keys())
 
     if "browse_root" not in st.session_state:
-        st.session_state.browse_root = "— select —"
+        st.session_state.browse_root = ""
+
+    if st.session_state.path_ids:
+        current_root_id = st.session_state.path_ids[0]
+        if current_root_id in root_map:
+            st.session_state.browse_root = current_root_id
 
     browse_pick = st.selectbox(
         "Top level",
@@ -630,17 +635,18 @@ with st.sidebar:
         index=browse_options.index(st.session_state.browse_root)
         if st.session_state.browse_root in browse_options
         else 0,
+        format_func=lambda rid: "— select —" if rid == "" else root_map[rid],
     )
 
     if browse_pick != st.session_state.browse_root:
         st.session_state.browse_root = browse_pick
-        if browse_pick != "— select —":
-            idx = root_labels.index(browse_pick)
+        if browse_pick:
             st.session_state.has_searched = True
-            st.session_state.path_ids = [root_ids[idx]]
+            st.session_state.path_ids = [browse_pick]
             st.session_state.root_indexes = None
             st.session_state.search_feedback = ""
         st.rerun()
+        #end dropdoen roots
 
     with st.form("global_material_search", clear_on_submit=False):
         search_query = st.text_input("query", placeholder="", label_visibility="collapsed")
@@ -668,7 +674,7 @@ with st.sidebar:
         if st.session_state.filter_attr_block in FILTER_ATTR_OPTIONS
         else 0,
     )
-
+    
     if st.session_state.has_searched and st.session_state.path_ids:
         root_id = st.session_state.path_ids[0]
         root_rows = fetch_root_subtree(root_id)
