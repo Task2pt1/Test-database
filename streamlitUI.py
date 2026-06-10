@@ -861,21 +861,21 @@ with tab_path:
                 st.caption("No attribute values on this node.")
             #if current display
             cmp_key = f"cmp_{pn['id']}_{i}"
-                st.checkbox(
-                    "Compare",
-                    value=is_material_in_compare(pn["id"]),
-                    key=cmp_key,
-                    on_change=on_compare_toggle,
-                    args=(pn["id"], name, cmp_key),
-                )
-                cb_key = f"bill_{pn['id']}_path_{i}"
-                st.checkbox(
-                    "Add to bill of materials",
-                    value=is_in_bill(pn["id"]),
-                    key=cb_key,
-                    on_change=on_bill_toggle,
-                    args=(pn["id"], cb_key),
-                )
+            st.checkbox(
+                "Compare",
+                value=is_material_in_compare(pn["id"]),
+                key=cmp_key,
+                on_change=on_compare_toggle,
+                args=(pn["id"], name, cmp_key),
+            )
+            cb_key = f"bill_{pn['id']}_path_{i}"
+            st.checkbox(
+                "Add to bill of materials",
+                value=is_in_bill(pn["id"]),
+                key=cb_key,
+                on_change=on_bill_toggle,
+                args=(pn["id"], cb_key),
+            )
                 #end if current display
     
     current = path_nodes[-1]
