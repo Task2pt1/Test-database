@@ -529,13 +529,18 @@ def render_parts_compare(parts: list[dict[str, str]]) -> None:
         st.caption("No compared attributes yet.")
         return
 
-    compare_df = pd.DataFrame({"attribute": all_attributes})
+    compare_df = pd.DataFrame()
 
     for material_id, material_name in material_names.items():
         compare_df[material_name] = [
             rows_by_material[material_id].get(attribute, "")
             for attribute in all_attributes
         ]
+
+    compare_df["attribute"] = all_attributes
+
+    ordered_cols = list(material_names.values()) + ["attribute"]
+    compare_df = compare_df[ordered_cols]
 
     st.dataframe(
         compare_df,
@@ -1066,8 +1071,6 @@ with tab_compare:
         else:
             render_parts_compare(compare_parts)
 
-
-# --- TAB 4 ---
 # --- TAB 4 ---
 with tab_bom:
     st.subheader("Export BOM")
@@ -1095,9 +1098,9 @@ with tab_bom:
         st.info("No materials in the bill of materials yet.")
     else:
         bom_df = pd.DataFrame(bom_rows)
-        preferred_cols = ["category", "material_id", "material_name"]
-        other_cols = [c for c in bom_df.columns if c not in preferred_cols]
-        bom_df = bom_df[preferred_cols + sorted(other_cols)]
+        fixed_cols = ["category", "material_id", "material_name"]
+        attr_cols = sorted(c for c in bom_df.columns if c not in fixed_cols)
+        bom_df = bom_df[fixed_cols + attr_cols]
 
         st.dataframe(
             bom_df,
