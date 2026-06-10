@@ -697,26 +697,24 @@ def render_current_node_detail(
     children = filter_nodes_lcia(children)
 
     if attr_rows:
-    st.markdown("**Attribute values**")
-    for r in attr_rows:
-        c1, c2 = st.columns([6, 1])
-        with c1:
-            st.text(f"{r['attribute']}: {r['value']}")
-        with c2:
-            if is_part_in_compare(node["id"], r["attribute"]):
-                if st.button("−", key=f"rm_{node['id']}_{r['attribute']}"):
-                    remove_part_from_compare(
-                        part_compare_key(node["id"], r["attribute"])
-                    )
-                    st.rerun()
-            else:
-                if st.button("+", key=f"add_{node['id']}_{r['attribute']}"):
-                    add_part_to_compare(
-                        node["id"], name, r["attribute"], r["value"]
-                    )
-                    st.rerun()
-else:
-    st.caption("No attribute values on this level.")
+        st.markdown("**Attribute values**")
+        for r in attr_rows:
+            c1, c2 = st.columns([6, 1])
+            with c1:
+                st.text(f"{r['attribute']}: {r['value']}")
+            with c2:
+                if is_part_in_compare(node["id"], r["attribute"]):
+                    if st.button("−", key=f"rm_{node['id']}_{r['attribute']}"):
+                        remove_part_from_compare(
+                            part_compare_key(node["id"], r["attribute"])
+                        )
+                        st.rerun()
+                else:
+                    if st.button("+", key=f"add_{node['id']}_{r['attribute']}"):
+                        add_part_to_compare(
+                            node["id"], name, r["attribute"], r["value"]
+                        )
+                        st.rerun()
     else:
         st.caption("No attribute values on this level.")
 
@@ -731,6 +729,12 @@ else:
                     st.json(val)
                 else:
                     st.write(val)
+                if st.button(
+                    f"Add all {key} fields to compare",
+                    key=f"addblock_{node['id']}_{level_index}_{key}",
+                ):
+                    add_block_to_compare(node, key)
+                    st.rerun()
 
     cb_key = f"bill_{node['id']}_path_{level_index}"
     st.checkbox(
@@ -756,43 +760,6 @@ else:
                 f"{html_escape(suffix)}",
                 unsafe_allow_html=True,
             )
-    for i, pn in enumerate(path_nodes):
-        with st.container():
-            st.markdown('<div class="stack-panel">', unsafe_allow_html=True)
-            render_compact_attributes(pn, current=(i == len(path_nodes) - 1))
-
-            cb_key = f"bill_{pn['id']}_path_{i}"
-            st.checkbox(
-                "Add to bill of materials",
-                value=is_in_bill(pn["id"]),
-                key=cb_key,
-                on_change=on_bill_toggle,
-                args=(pn["id"], cb_key),
-            )
-
-            st.markdown("</div>", unsafe_allow_html=True)
-
-    st.divider()
-    st.markdown("**Submaterials**")
-
-    children = indexes["children_by_parent"].get(current_id, [])
-    children = filter_nodes_lcia(children)
-
-    if not children:
-        st.caption("No submaterials here.")
-    else:
-        for child in children:
-            name = node_name(child)
-            n_child = len(indexes["children_by_parent"].get(child["id"], []))
-            suffix = f" ({n_child} submaterials)" if n_child else ""
-            if has_lcia(child.get("props")):
-                suffix += " · LCIA"
-            st.markdown(
-                f'<a href="?nav={child["id"]}" target="_self">{html_escape(name)}</a>'
-                f"{html_escape(suffix)}",
-                unsafe_allow_html=True,
-            )
-
 
 # --- TAB 2: Flat table ---
 with tab_table:
