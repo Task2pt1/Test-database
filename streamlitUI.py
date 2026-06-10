@@ -512,6 +512,7 @@ def on_nav_child(child_id: str) -> None:
 
     if child_id in allowed_ids:
         st.session_state.path_ids = path_to_node(indexes, child_id)
+        st.rerun()
 
 def render_current_node_detail(
     node: dict[str, Any],
@@ -902,7 +903,8 @@ with tab_path:
                 on_change=on_bill_toggle,
                 args=(pn["id"], cb_key),
             )
-        
+    #
+    
     current = path_nodes[-1]
     children = visible_submaterials(indexes, current["id"])
 
@@ -919,17 +921,25 @@ with tab_path:
             label = cname
             if n_child:
                 label += f" ({n_child} submaterials)"
-            n_vals = len(attr_rows_for_display(child))
+
+            child_attr_groups = grouped_attr_rows_for_display(child)
+            choice = st.session_state.filter_attr_block
+            if choice in ("(no filter)", "(any values)"):
+                n_vals = len(attr_rows_for_display(child))
+            else:
+                n_vals = len(child_attr_groups.get(choice, []))
+
             if n_vals:
                 label += f"  [{n_vals} values]"
-            st.button(
+
+            if st.button(
                 label,
                 key=f"nav_{current['id']}_{child['id']}",
-                on_click=on_nav_child,
-                args=(child["id"],),
                 use_container_width=True,
-            )
-
+            ):
+                on_nav_child(child["id"])
+                st.rerun()
+                
 # --- TAB 2 ---
 with tab_table:
     st.subheader("All materials under this node — every extracted value")
