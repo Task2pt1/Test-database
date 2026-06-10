@@ -871,7 +871,7 @@ subtree = get_subtree_rows_from_indexes(current_id, indexes)
 # SECTION 14 — MAIN TABS
 # =============================================================================
 tab_path, tab_table, tab_compare, tab_bom = st.tabs(
-    ["Path + explore", "All values (table)", "Export BOM", "Compare"])
+    ["Path + explore", "All values (table)", "Compare", "Export BOM"])
 
 # --- TAB 1 ---
 with tab_path:
