@@ -374,19 +374,19 @@ def apply_filter_auto_dive(indexes: dict[str, Any]) -> bool:
     current_path = list(st.session_state.path_ids)
 
     for candidate_id in reversed(current_path):
-        candidate_node = indexes["nodes_by_id"].get(candidate_id)
-        if not candidate_node:
-            continue
-
-        if node_passes_submaterial_filter(candidate_node):
+        filtered_children = filter_nodes_by_attr(
+            indexes["children_by_parent"].get(candidate_id, [])
+        )
+        if filtered_children:
             new_path = path_to_node(indexes, candidate_id)
             if new_path != current_path:
                 st.session_state.path_ids = new_path
                 return True
             return False
 
-        filtered_descendant_id = first_filtered_descendant(indexes, candidate_id)
-        if filtered_descendant_id:
+    for candidate_id in reversed(current_path):
+        candidate_node = indexes["nodes_by_id"].get(candidate_id)
+        if candidate_node and node_passes_submaterial_filter(candidate_node):
             new_path = path_to_node(indexes, candidate_id)
             if new_path != current_path:
                 st.session_state.path_ids = new_path
