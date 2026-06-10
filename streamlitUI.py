@@ -614,7 +614,7 @@ with st.sidebar:
     st.header("Navigation")
 
     search_query = st.text_input("Search", placeholder="")
-    search_submitted = st.button("Search", type="primary", use_container_width=True)
+    search_submitted = st.button("Search", use_container_width=True)
 
     if search_submitted:
         found_path_ids = search_material_path(search_query)
