@@ -650,15 +650,15 @@ def render_current_node_detail(
     all_children = indexes["children_by_parent"].get(node["id"], [])
     children = filter_nodes_by_attr(all_children)
 
+    #
     title = name
-    if children:
-        title += f"  ({len(children)} submaterials)"
+    if all_children:
+        title += f" ({len(all_children)} submaterials)"
     if attr_rows:
-        title += f"  [{len(attr_rows)} values]"
+        title += f" [{len(attr_rows)} values]"
 
-    with st.expander(title, expanded=True):
-        # attr display
-        attr_groups = grouped_attr_rows_for_display(pn)
+        with st.expander(title, expanded=is_current):
+            attr_groups = grouped_attr_rows_for_display(pn)
 
         if attr_groups:
             open_group = st.session_state.get(f"open_attr_group_{pn['id']}")
@@ -1105,7 +1105,7 @@ with tab_path:
     
     current = path_nodes[-1]
     children = visible_submaterials(indexes, current["id"])
-
+    #
     st.markdown("**Submaterials**")
     if not children:
         if st.session_state.filter_attr_block == "(no filter)":
@@ -1116,27 +1116,63 @@ with tab_path:
         for child in children:
             cname = node_name(child)
             n_child = len(indexes["children_by_parent"].get(child["id"], []))
-            label = cname
-            if n_child:
-                label += f" ({n_child} submaterials)"
-
             child_attr_groups = grouped_attr_rows_for_display(child)
             choice = st.session_state.filter_attr_block
+
             if choice in ("(no filter)", "(any values)"):
-                n_vals = len(attr_rows_for_display(child))
+                preview_rows = attr_rows_for_display(child)
             else:
-                n_vals = len(child_attr_groups.get(choice, []))
+                preview_rows = child_attr_groups.get(choice, [])
 
-            if n_vals:
-                label += f"  [{n_vals} values]"
+            title = cname
+            if n_child:
+                title += f" ({n_child} submaterials)"
+            if preview_rows:
+                title += f" [{len(preview_rows)} values]"
 
-            if st.button(
-                label,
-                key=f"nav_{current['id']}_{child['id']}",
-                use_container_width=True,
-            ):
-                st.session_state.path_ids = path_to_node(indexes, child["id"])
-                st.rerun()
+            with st.expander(title, expanded=False):
+                open_col, compare_col, bom_col = st.columns([2, 2, 3])
+
+                with open_col:
+                    if st.button(
+                        "Open",
+                        key=f"open_{current['id']}_{child['id']}",
+                        use_container_width=True,
+                    ):
+                        st.session_state.path_ids = path_to_node(indexes, child["id"])
+                        st.rerun()
+
+                with compare_col:
+                    cmp_key = f"cmp_child_{child['id']}"
+                    st.checkbox(
+                        "Compare",
+                        value=is_material_in_compare(child["id"]),
+                        key=cmp_key,
+                        on_change=on_compare_toggle,
+                        args=(child["id"], cname, cmp_key),
+                    )
+
+                with bom_col:
+                    bom_key = f"bill_child_{child['id']}"
+                    st.checkbox(
+                        "Add to BOM",
+                        value=is_in_bill(child["id"]),
+                        key=bom_key,
+                        on_change=on_bill_toggle,
+                        args=(child["id"], bom_key),
+                    )
+
+                if preview_rows:
+                    if choice not in ("(no filter)", "(any values)"):
+                        st.markdown(f"**{choice}**")
+                    st.dataframe(
+                        pd.DataFrame(preview_rows),
+                        use_container_width=True,
+                        hide_index=True,
+                        height=min(38 + 28 * len(preview_rows), 220),
+                    )
+                else:
+                    st.caption("No matching attribute values on this submaterial.")
                 
 # --- TAB 2 ---
 with tab_table:
