@@ -314,9 +314,6 @@ def get_subtree_rows_from_indexes(node_id: str, indexes: dict[str, Any]) -> list
 # =============================================================================
 # SECTION 7 — FILTER, COMPARE, AND CURRENT-NODE DISPLAY
 # =============================================================================
-# =============================================================================
-# SECTION 7 — FILTER, COMPARE, AND CURRENT-NODE DISPLAY
-# =============================================================================
 def has_attr_block(props: dict[str, Any] | None, block: str) -> bool:
     parsed = parse_props(props)
     val = parsed.get(block)
@@ -333,12 +330,72 @@ def node_passes_submaterial_filter(node: dict[str, Any]) -> bool:
         return True
     if choice == "(any values)":
         return has_any_attribute_values(node.get("props"))
-    return has_attr_block(node.get("props"), choice)
+    rows = extract_attribute_rows(node.get("props") or {})
+    return any(
+        r["attribute"] == choice or r["attribute"].startswith(f"{choice}.")
+        for r in rows)
 
 
 def filter_nodes_by_attr(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [n for n in nodes if node_passes_submaterial_filter(n)]
 
+def path_to_node(indexes: dict[str, Any], target_id: str) -> list[str]:
+    parent_by_id = indexes["parent_by_id"]
+    chain: list[str] = []
+    cur: str | None = target_id
+    while cur is not None:
+        chain.append(cur)
+        cur = parent_by_id.get(cur)
+    return list(reversed(chain))
+
+
+def first_filtered_descendant(indexes: dict[str, Any], start_id: str) -> str | None:
+    """First descendant under start_id that passes the sidebar filter (BFS)."""
+    start_node = indexes["nodes_by_id"].get(start_id)
+    if not start_node:
+        return None
+
+    if node_passes_submaterial_filter(start_node):
+        return start_id
+
+    queue = deque([start_id])
+    while queue:
+        nid = queue.popleft()
+        for child in indexes["children_by_parent"].get(nid, []):
+            if node_passes_submaterial_filter(child):
+                return child["id"]
+            queue.append(child["id"])
+    return None
+
+
+def apply_filter_auto_dive(indexes: dict[str, Any]) -> bool:
+    """From current search node, jump to first matching child. True if path changed."""
+    if st.session_state.filter_attr_block == "(no filter)":
+        return False
+    if not st.session_state.path_ids:
+        return False
+
+    anchor_id = st.session_state.path_ids[-1]
+    anchor_node = indexes["nodes_by_id"].get(anchor_id)
+    if not anchor_node:
+        return False
+
+    if node_passes_submaterial_filter(anchor_node):
+        return False
+
+    target_id = first_filtered_descendant(indexes, anchor_id)
+    if not target_id or target_id == anchor_id:
+        return False
+
+    full = path_to_node(indexes, target_id)
+    root = st.session_state.path_ids[0]
+    new_path = full[full.index(root) :] if root in full else full
+
+    if new_path == st.session_state.path_ids:
+        return False
+
+    st.session_state.path_ids = new_path
+    return True
 
 def all_filtered_descendants(
     indexes: dict[str, Any], start_id: str
@@ -355,6 +412,28 @@ def all_filtered_descendants(
     out.sort(key=node_name)
     return out
 
+def apply_filter_auto_dive(indexes: dict[str, Any]) -> bool:
+    """Dive from current search node into first matching descendant. Returns True if path changed."""
+    if st.session_state.filter_attr_block == "(no filter)":
+        return False
+    if not st.session_state.path_ids:
+        return False
+    anchor_id = st.session_state.path_ids[-1]
+    anchor_node = indexes["nodes_by_id"].get(anchor_id)
+    if not anchor_node:
+        return False
+    if node_passes_submaterial_filter(anchor_node):
+        return False
+    target_id = first_filtered_descendant(indexes, anchor_id)
+    if not target_id or target_id == anchor_id:
+        return False
+    full = path_to_node(indexes, target_id)
+    root = st.session_state.path_ids[0]
+    new_path = full[full.index(root) :] if root in full else full
+    if new_path == st.session_state.path_ids:
+        return False
+    st.session_state.path_ids = new_path
+    return True
 
 def attr_rows_for_display(node: dict[str, Any]) -> list[dict[str, str]]:
     return extract_attribute_rows(node.get("props") or {})
@@ -690,6 +769,8 @@ with st.sidebar:
         root_rows = fetch_root_subtree(root_id)
         indexes = build_subtree_indexes(root_rows, root_id)
         st.session_state.root_indexes = indexes
+        if apply_filter_auto_dive(indexes):
+            st.rerun()
         render_clickable_path(st.session_state.path_ids, indexes)
 
     st.divider()
