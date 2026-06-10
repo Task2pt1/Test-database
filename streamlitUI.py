@@ -195,7 +195,21 @@ def fetch_root_subtree(root_id: str) -> list[dict[str, Any]]:
         {"root_id": root_id},
     )
 
-
+@st.cache_data(show_spinner=False)
+def fetch_material_node(material_id: str) -> dict[str, Any] | None:
+    rows = run_query(
+        f"""
+        MATCH (n:{NODE_LABEL} {{id: $material_id}})
+        RETURN
+            n.id AS id,
+            n.name AS label,
+            properties(n) AS props
+        LIMIT 1
+        """,
+        {"material_id": material_id},
+    )
+    return rows[0] if rows else None
+    
 def search_material_path(query: str) -> list[str]:
     q = query.strip().lower()
     if not q:
@@ -1021,37 +1035,39 @@ with tab_table:
         )
 
 # --- TAB 3 ---
+# --- TAB 3 ---
 with tab_compare:
     st.subheader("Compare materials")
 
     if len(st.session_state.compare_materials) < 2:
         st.info("Select at least 2 materials with the Compare checkbox.")
     else:
-        indexes = st.session_state.get("root_indexes")
         compare_parts: list[dict[str, str]] = []
 
-        if indexes:
-            for material in st.session_state.compare_materials:
-                node = indexes["nodes_by_id"].get(material["id"])
-                if not node:
-                    continue
-                for attr_row in extract_attribute_rows(node.get("props") or {}):
-                    compare_parts.append(
-                        {
-                            "key": part_compare_key(material["id"], attr_row["attribute"]),
-                            "material_id": material["id"],
-                            "material_name": material["name"],
-                            "attribute": attr_row["attribute"],
-                            "value": attr_row["value"],
-                        }
-                    )
+        for material in st.session_state.compare_materials:
+            node = fetch_material_node(material["id"])
+            if not node:
+                continue
+
+            attr_rows = extract_attribute_rows(node.get("props") or {})
+            for attr_row in attr_rows:
+                compare_parts.append(
+                    {
+                        "key": part_compare_key(material["id"], attr_row["attribute"]),
+                        "material_id": material["id"],
+                        "material_name": material["name"],
+                        "attribute": attr_row["attribute"],
+                        "value": attr_row["value"],
+                    }
+                )
 
         if not compare_parts:
-            st.info("No comparable attributes found for the selected materials in this root.")
+            st.info("No comparable attributes found for the selected materials.")
         else:
             render_parts_compare(compare_parts)
 
 
+# --- TAB 4 ---
 # --- TAB 4 ---
 with tab_bom:
     st.subheader("Export BOM")
@@ -1060,13 +1076,19 @@ with tab_bom:
 
     for category in sorted(st.session_state.bom.keys()):
         for item in st.session_state.bom[category]:
+            node = fetch_material_node(item["id"])
+            if not node:
+                continue
+
             row = {
                 "category": category,
                 "material_id": item["id"],
                 "material_name": item["name"],
             }
-            for attr, value in (item.get("values") or {}).items():
-                row[attr] = value
+
+            for attr_row in extract_attribute_rows(node.get("props") or {}):
+                row[attr_row["attribute"]] = attr_row["value"]
+
             bom_rows.append(row)
 
     if not bom_rows:
