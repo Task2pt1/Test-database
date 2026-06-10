@@ -737,13 +737,22 @@ with st.sidebar:
     if st.session_state.search_feedback:
         st.caption(st.session_state.search_feedback)
 
-    st.session_state.filter_attr_block = st.selectbox(
-        "Only show submaterials with:",
-        options=FILTER_ATTR_OPTIONS,
-        index=FILTER_ATTR_OPTIONS.index(st.session_state.filter_attr_block)
-        if st.session_state.filter_attr_block in FILTER_ATTR_OPTIONS
-        else 0,
-    )
+    #start filter clear
+    filter_pick = st.selectbox(
+    "Only show submaterials with:",
+    options=FILTER_ATTR_OPTIONS,
+    index=FILTER_ATTR_OPTIONS.index(st.session_state.filter_attr_block)
+    if st.session_state.filter_attr_block in FILTER_ATTR_OPTIONS
+    else 0,
+)
+
+if filter_pick != st.session_state.filter_attr_block:
+    st.session_state.filter_attr_block = filter_pick
+    if st.session_state.path_ids:
+        st.session_state.path_ids = [st.session_state.path_ids[0]]
+    st.session_state.root_indexes = None
+    st.rerun()
+    #end filter clear
     
     if st.session_state.has_searched and st.session_state.path_ids:
         root_id = st.session_state.path_ids[0]
