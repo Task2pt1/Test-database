@@ -314,6 +314,9 @@ def get_subtree_rows_from_indexes(node_id: str, indexes: dict[str, Any]) -> list
 # =============================================================================
 # SECTION 7 — FILTER, COMPARE, AND CURRENT-NODE DISPLAY
 # =============================================================================
+# =============================================================================
+# SECTION 7 — FILTER, COMPARE, AND CURRENT-NODE DISPLAY
+# =============================================================================
 def has_attr_block(props: dict[str, Any] | None, block: str) -> bool:
     parsed = parse_props(props)
     val = parsed.get(block)
@@ -335,6 +338,22 @@ def node_passes_submaterial_filter(node: dict[str, Any]) -> bool:
 
 def filter_nodes_by_attr(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [n for n in nodes if node_passes_submaterial_filter(n)]
+
+
+def all_filtered_descendants(
+    indexes: dict[str, Any], start_id: str
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    queue = deque([start_id])
+    while queue:
+        nid = queue.popleft()
+        node = indexes["nodes_by_id"][nid]
+        if nid != start_id and node_passes_submaterial_filter(node):
+            out.append(node)
+        for child in indexes["children_by_parent"].get(nid, []):
+            queue.append(child["id"])
+    out.sort(key=node_name)
+    return out
 
 
 def attr_rows_for_display(node: dict[str, Any]) -> list[dict[str, str]]:
@@ -394,7 +413,6 @@ def render_parts_compare(parts: list[dict[str, str]]) -> None:
             st.markdown(f"**{part['material_name']}**")
             st.caption(part["attribute"])
             st.write(part["value"])
-
 
 def render_current_node_detail(
     node: dict[str, Any],
