@@ -437,7 +437,14 @@ def apply_filter_auto_dive(indexes: dict[str, Any]) -> bool:
 
 def attr_rows_for_display(node: dict[str, Any]) -> list[dict[str, str]]:
     return extract_attribute_rows(node.get("props") or {})
-
+    
+def node_passes_submaterial_filter(node: dict[str, Any]) -> bool:
+    choice = st.session_state.filter_attr_block
+    if choice == "(no filter)":
+        return True
+    if choice == "(any values)":
+        return bool(extract_attribute_rows(node.get("props") or {}))
+    return has_attr_block(node.get("props"), choice)
 
 def part_compare_key(material_id: str, attribute: str) -> str:
     return f"{material_id}|{attribute}"
