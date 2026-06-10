@@ -475,18 +475,25 @@ def render_current_node_detail(
     else:
         st.caption("No attribute values on this level.")
 
-    cb_key = f"bill_{node['id']}_path_{level_index}"
-    st.checkbox(
-        "Add to bill of materials",
-        value=is_in_bill(node["id"]),
-        key=cb_key,
-        on_change=on_bill_toggle,
-        args=(node["id"], cb_key),
-    )
+    col_cmp, col_bom = st.columns([1, 9])
+    with col_cmp:
+        cmp_label = "⇄" if not st.session_state.show_compare_view else "⇄ on"
+        if st.button(cmp_label, key=f"cmp_{node['id']}_{level_index}", help="Toggle comparison"):
+            st.session_state.show_compare_view = not st.session_state.show_compare_view
+            st.rerun()
+    with col_bom:
+        cb_key = f"bill_{node['id']}_path_{level_index}"
+        st.checkbox(
+            "Add to bill of materials",
+            value=is_in_bill(node["id"]),
+            key=cb_key,
+            on_change=on_bill_toggle,
+            args=(node["id"], cb_key),
+        )
 
     st.markdown("**Submaterials**")
     if not children:
-        st.caption("No submaterials here.")
+        st.caption("No submaterials here — use **Go back** above or **Path** in the sidebar.")
     else:
         for child in children:
             cname = node_name(child)
@@ -505,7 +512,6 @@ def render_current_node_detail(
                 args=(child["id"],),
                 use_container_width=True,
             )
-            
 # =============================================================================
 # SECTION 8 — BOM HELPERS
 # =============================================================================
@@ -615,14 +621,12 @@ st.markdown(
 # =============================================================================
 with st.sidebar:
     st.header("Navigation")
-
     with st.form("global_material_search", clear_on_submit=False):
         search_query = st.text_input(
             "Search",
             placeholder="Search by name, id, or code",
         )
         search_submitted = st.form_submit_button("Search", use_container_width=True)
-
     if search_submitted:
         found_path_ids = search_material_path(search_query)
         if found_path_ids:
@@ -633,10 +637,8 @@ with st.sidebar:
             st.rerun()
         else:
             st.session_state.search_feedback = "No material found."
-
     if st.session_state.search_feedback:
         st.caption(st.session_state.search_feedback)
-
     st.session_state.filter_attr_block = st.selectbox(
         "Only show submaterials with:",
         options=FILTER_ATTR_OPTIONS,
@@ -644,23 +646,6 @@ with st.sidebar:
         if st.session_state.filter_attr_block in FILTER_ATTR_OPTIONS
         else 0,
     )
-
-    st.divider()
-    st.subheader("Compare")
-
-    if st.session_state.compare_parts:
-        for p in st.session_state.compare_parts:
-            st.caption(f"• {p['material_name']} — {p['attribute']}")
-
-    st.session_state.show_compare_view = st.checkbox(
-        "Show side-by-side comparison",
-        value=st.session_state.show_compare_view,
-    )
-
-    if st.button("Clear compare list", use_container_width=True):
-        st.session_state.compare_parts = []
-        st.rerun()
-
     if st.session_state.has_searched and st.session_state.path_ids:
         root_id = st.session_state.path_ids[0]
         root_rows = fetch_root_subtree(root_id)
@@ -669,7 +654,15 @@ with st.sidebar:
         if apply_filter_auto_dive(indexes):
             st.rerun()
         render_clickable_path(st.session_state.path_ids, indexes)
-
+    if st.session_state.compare_parts:
+        st.divider()
+        st.caption("Compare list")
+        for p in st.session_state.compare_parts:
+            st.caption(f"• {p['material_name']} — {p['attribute']}")
+        if st.button("Clear compare list", use_container_width=True):
+            st.session_state.compare_parts = []
+            st.session_state.show_compare_view = False
+            st.rerun()
     st.divider()
     st.subheader("Bill of materials")
     if not st.session_state.bom:
@@ -687,11 +680,9 @@ with st.sidebar:
                     if len(vals) > 3:
                         preview += f" … (+{len(vals) - 3} more)"
                     st.caption(preview)
-
     if st.button("Clear bill", use_container_width=True):
         st.session_state.bom = {}
         st.rerun()
-
 
 # =============================================================================
 # SECTION 13 — MAIN AREA GATE
@@ -731,6 +722,7 @@ tab_path, tab_table, tab_bom = st.tabs(
 
 
 # --- TAB 1 ---
+# --- TAB 1 ---
 with tab_path:
     path_nodes = [
         indexes["nodes_by_id"][nid]
@@ -738,14 +730,30 @@ with tab_path:
         if nid in indexes["nodes_by_id"]
     ]
     path_labels = [node_name(pn) for pn in path_nodes]
+
     if path_labels:
         st.subheader(" › ".join(path_labels))
     else:
         st.subheader("Explore")
+
+    if len(path_labels) > 1:
+        st.markdown("**Go back**")
+        back_cols = st.columns(min(len(path_labels) - 1, 4))
+        for i, label in enumerate(path_labels[:-1]):
+            with back_cols[i % len(back_cols)]:
+                st.button(
+                    label,
+                    key=f"back_{i}_{path_nodes[i]['id']}",
+                    on_click=on_crumb_click,
+                    args=(i,),
+                    use_container_width=True,
+                )
+
     if st.session_state.show_compare_view and len(st.session_state.compare_parts) >= 2:
         st.markdown("**Comparison**")
         render_parts_compare(st.session_state.compare_parts)
         st.divider()
+
     render_current_node_detail(
         path_nodes[-1], indexes, level_index=len(path_nodes) - 1
     )
