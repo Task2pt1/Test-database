@@ -776,14 +776,19 @@ def render_child_branch(indexes, node):
             key=bom_key,
             on_change=on_bill_toggle,
             args=(node["id"], bom_key))
-        if preview_rows:
-            st.dataframe(
-                pd.DataFrame(preview_rows),
-                use_container_width=True,
-                hide_index=True,
-                height=min(38 + 28 * len(preview_rows), 220))
-        for child in children:
-            render_child_branch(indexes, child)
+        attr_groups = grouped_attr_rows_for_display(node)
+        if attr_groups:
+            for group_name, group_rows in attr_groups.items():
+                st.markdown(f"**{group_name}**")
+                st.dataframe(
+                    pd.DataFrame(group_rows),
+                    use_container_width=True,
+                    hide_index=True,
+                    height=min(
+                        38 + 28 * len(group_rows),
+                        260,),)
+                for child in children:
+                    render_child_branch(indexes, child)
 # =============================================================================
 # SECTION 8 — BOM HELPERS
 # =============================================================================
@@ -1042,23 +1047,33 @@ with st.sidebar:
     #end filter clear
     
     #compare list
-    if st.session_state.compare_materials:
-        st.divider()
-        st.caption("Compare list")
-        for m in st.session_state.compare_materials:
+# compare list
+if st.session_state.compare_materials:
+    st.divider()
+    st.markdown("**Compare List**")
+    compare_groups = defaultdict(list)
+    for m in st.session_state.compare_materials:
+        compare_groups[m.get("category", "Uncategorized")].append(m)
+    for cat in sorted(compare_groups.keys()):
+        st.markdown(f"**{cat}**")
+        for m in compare_groups[cat]:
             name_col, reject_col = st.columns([6, 1])
             with name_col:
                 st.caption(f"• {m['name']}")
             with reject_col:
-                if st.button("✕", key=f"reject_compare_{m['id']}"):
+                if st.button(
+                    "✕",
+                    key=f"reject_compare_{m['id']}"):
                     remove_material_from_compare(m["id"])
                     st.rerun()
-
-        if st.button("Clear compare list", use_container_width=True):
-            st.session_state.compare_materials = []
-            st.session_state.compare_parts = []
-            st.session_state.show_compare_view = False
-            st.rerun()
+    if st.button(
+        "Clear compare list",
+        use_container_width=True):
+        st.session_state.compare_materials = []
+        st.session_state.compare_parts = []
+        st.session_state.show_compare_view = False
+        st.rerun()
+            
     #end compare list
     st.divider()
     st.caption("Bill of materials")
@@ -1066,7 +1081,7 @@ with st.sidebar:
         st.caption("Empty.")
     else:
         for cat in sorted(st.session_state.bom.keys()):
-            st.caption(cat)
+            st.markdown(f"**{cat}**")
             for item in st.session_state.bom[cat]:
                 name_col, reject_col = st.columns([6, 1])
                 with name_col:
