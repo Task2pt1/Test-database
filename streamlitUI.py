@@ -747,48 +747,73 @@ def on_nav_child(child_id: str) -> None:
         st.rerun()
 
 def render_child_branch(indexes, node):
+
     cname = node_name(node)
+
     children = indexes["children_by_parent"].get(
-        node["id"], [])
+        node["id"],
+        [],
+    )
+
     child_attr_groups = grouped_attr_rows_for_display(node)
+
     choice = st.session_state.filter_attr_block
+
     if choice == "(no filter)":
         preview_rows = attr_rows_for_display(node)
     else:
         preview_rows = child_attr_groups.get(choice, [])
+
     title = cname
+
     if children:
         title += f" ({len(children)} submaterials)"
+
     if preview_rows:
         title += f" [{len(preview_rows)} values]"
+
     with st.expander(title, expanded=False):
+
         cmp_key = f"cmp_child_{node['id']}"
+
         st.checkbox(
             "Compare",
             value=is_material_in_compare(node["id"]),
             key=cmp_key,
             on_change=on_compare_toggle,
-            args=(node["id"], cname, cmp_key))
+            args=(node["id"], cname, cmp_key),
+        )
+
         bom_key = f"bill_child_{node['id']}"
+
         st.checkbox(
             "Add to BOM",
             value=is_in_bill(node["id"]),
             key=bom_key,
             on_change=on_bill_toggle,
-            args=(node["id"], bom_key))
+            args=(node["id"], bom_key),
+        )
+
         attr_groups = grouped_attr_rows_for_display(node)
+
         if attr_groups:
+
             for group_name, group_rows in attr_groups.items():
+
                 st.markdown(f"**{group_name}**")
+
                 st.dataframe(
                     pd.DataFrame(group_rows),
                     use_container_width=True,
                     hide_index=True,
                     height=min(
                         38 + 28 * len(group_rows),
-                        260,),)
-                for child in children:
-                    render_child_branch(indexes, child)
+                        260,
+                    ),
+                )
+
+        for child in children:
+            render_child_branch(indexes, child)
 # =============================================================================
 # SECTION 8 — BOM HELPERS
 # =============================================================================
