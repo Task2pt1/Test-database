@@ -746,7 +746,44 @@ def on_nav_child(child_id: str) -> None:
         st.session_state.path_ids = path_to_node(indexes, child_id)
         st.rerun()
 
-
+def render_child_branch(indexes, node):
+    cname = node_name(node)
+    children = indexes["children_by_parent"].get(
+        node["id"], [])
+    child_attr_groups = grouped_attr_rows_for_display(node)
+    choice = st.session_state.filter_attr_block
+    if choice == "(no filter)":
+        preview_rows = attr_rows_for_display(node)
+    else:
+        preview_rows = child_attr_groups.get(choice, [])
+    title = cname
+    if children:
+        title += f" ({len(children)} submaterials)"
+    if preview_rows:
+        title += f" [{len(preview_rows)} values]"
+    with st.expander(title, expanded=False):
+        cmp_key = f"cmp_child_{node['id']}"
+        st.checkbox(
+            "Compare",
+            value=is_material_in_compare(node["id"]),
+            key=cmp_key,
+            on_change=on_compare_toggle,
+            args=(node["id"], cname, cmp_key))
+        bom_key = f"bill_child_{node['id']}"
+        st.checkbox(
+            "Add to BOM",
+            value=is_in_bill(node["id"]),
+            key=bom_key,
+            on_change=on_bill_toggle,
+            args=(node["id"], bom_key))
+        if preview_rows:
+            st.dataframe(
+                pd.DataFrame(preview_rows),
+                use_container_width=True,
+                hide_index=True,
+                height=min(38 + 28 * len(preview_rows), 220))
+        for child in children:
+            render_child_branch(indexes, child)
 # =============================================================================
 # SECTION 8 — BOM HELPERS
 # =============================================================================
@@ -1075,6 +1112,7 @@ tab_path, tab_table, tab_compare, tab_bom = st.tabs(
     ["Path + explore", "All values (table)", "Compare", "Export BOM"])
 
 # --- TAB 1 ---
+# --- TAB 1 ---
 with tab_path:
     path_nodes = [
         indexes["nodes_by_id"][nid]
@@ -1088,10 +1126,9 @@ with tab_path:
     else:
         st.subheader("Explore")
 
-    #
     if st.session_state.compare_materials:
         st.caption("view compared materials.")
-        
+
     for i, pn in enumerate(path_nodes):
         is_current = i == len(path_nodes) - 1
         name = node_name(pn)
@@ -1099,28 +1136,35 @@ with tab_path:
         all_children = indexes["children_by_parent"].get(pn["id"], [])
 
         title = name
+
         if all_children:
-            title += f"  ({len(all_children)} submaterials)"
+            title += f" ({len(all_children)} submaterials)"
+
         if attr_rows:
-            title += f"  [{len(attr_rows)} values]"
-        #expander central
-    
+            title += f" [{len(attr_rows)} values]"
+
         with st.expander(title, expanded=is_current):
+
             attr_groups = grouped_attr_rows_for_display(pn)
-    
+
             if attr_groups:
                 for group_name, group_rows in attr_groups.items():
                     st.markdown(f"**{group_name}**")
+
                     st.dataframe(
                         pd.DataFrame(group_rows),
                         use_container_width=True,
                         hide_index=True,
-                        height=min(38 + 28 * len(group_rows), 260),
+                        height=min(
+                            38 + 28 * len(group_rows),
+                            260,
+                        ),
                     )
             else:
                 st.caption("No attribute values on this node.")
-    
+
             cmp_key = f"cmp_{pn['id']}_{i}"
+
             st.checkbox(
                 "Compare",
                 value=is_material_in_compare(pn["id"]),
@@ -1128,8 +1172,9 @@ with tab_path:
                 on_change=on_compare_toggle,
                 args=(pn["id"], name, cmp_key),
             )
-    
+
             cb_key = f"bill_{pn['id']}_path_{i}"
+
             st.checkbox(
                 "Add to bill of materials",
                 value=is_in_bill(pn["id"]),
@@ -1137,13 +1182,12 @@ with tab_path:
                 on_change=on_bill_toggle,
                 args=(pn["id"], cb_key),
             )
-            
-    #end expander
-    
+
     current = path_nodes[-1]
     children = visible_submaterials(indexes, current["id"])
-    #
+
     st.markdown("**Submaterials**")
+
     if not children:
         if st.session_state.filter_attr_block == "(no filter)":
             st.caption("No submaterials here.")
@@ -1151,65 +1195,7 @@ with tab_path:
             st.caption("No submaterials match the current filter.")
     else:
         for child in children:
-            cname = node_name(child)
-            n_child = len(indexes["children_by_parent"].get(child["id"], []))
-            child_attr_groups = grouped_attr_rows_for_display(child)
-            choice = st.session_state.filter_attr_block
-
-            if choice in ("(no filter)"):
-                preview_rows = attr_rows_for_display(child)
-            else:
-                preview_rows = child_attr_groups.get(choice, [])
-
-            title = cname
-            if n_child:
-                title += f" ({n_child} submaterials)"
-            if preview_rows:
-                title += f" [{len(preview_rows)} values]"
-
-            with st.expander(title, expanded=False):
-                open_col, compare_col, bom_col = st.columns([2, 2, 3])
-
-                with open_col:
-                    if st.button(
-                        "Open",
-                        key=f"open_{current['id']}_{child['id']}",
-                        use_container_width=True,
-                    ):
-                        st.session_state.path_ids = path_to_node(indexes, child["id"])
-                        st.rerun()
-
-                with compare_col:
-                    cmp_key = f"cmp_child_{child['id']}"
-                    st.checkbox(
-                        "Compare",
-                        value=is_material_in_compare(child["id"]),
-                        key=cmp_key,
-                        on_change=on_compare_toggle,
-                        args=(child["id"], cname, cmp_key),
-                    )
-
-                with bom_col:
-                    bom_key = f"bill_child_{child['id']}"
-                    st.checkbox(
-                        "Add to BOM",
-                        value=is_in_bill(child["id"]),
-                        key=bom_key,
-                        on_change=on_bill_toggle,
-                        args=(child["id"], bom_key),
-                    )
-
-                if preview_rows:
-                    if choice not in ("(no filter)"):
-                        st.markdown(f"**{choice}**")
-                    st.dataframe(
-                        pd.DataFrame(preview_rows),
-                        use_container_width=True,
-                        hide_index=True,
-                        height=min(38 + 28 * len(preview_rows), 220),
-                    )
-                else:
-                    st.caption("No matching attribute values on this submaterial.")
+            render_child_branch(indexes, child)
                 
 # --- TAB 2 ---
 with tab_table:
