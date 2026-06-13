@@ -71,7 +71,7 @@ st.markdown(
         opacity: 0.6;
         margin: 0 0.25rem;
     }
-    }
+
 
     .compare-scroll {
         overflow-x: auto;
@@ -317,12 +317,12 @@ def fetch_material_node(material_id: str) -> dict[str, Any] | None:
     )
     return rows[0] if rows else None
     
-def search_material_path(query: str) -> list[str]:
+def search_materials(query: str) -> list[dict[str, Any]]:
     q = query.strip().lower()
     if not q:
         return []
 
-    rows = run_query(
+    return run_query(
         f"""
         MATCH (n:{NODE_LABEL})
         WHERE toLower(coalesce(n.name, '')) CONTAINS $q
@@ -343,21 +343,15 @@ def search_material_path(query: str) -> list[str]:
                  ELSE 6
              END AS rank_score
 
-        WITH n, p, rank_score
-        ORDER BY rank_score, length(p), n.name
-        LIMIT 1
-
-        RETURN [x IN nodes(p) | x.id] AS path_ids
+        RETURN
+            n.id AS id,
+            coalesce(n.name, n.id) AS label,
+            [x IN nodes(p) | x.id] AS path_ids
+        ORDER BY rank_score, label
         """,
         {"q": q},
     )
-
-    if not rows:
-        return []
-
-    return rows[0].get("path_ids") or []
-
-
+    
 # =============================================================================
 # SECTION 6 — IN-MEMORY INDEXES
 # =============================================================================
@@ -957,7 +951,10 @@ if "has_searched" not in st.session_state:
     st.session_state.path_ids = []
     st.session_state.root_indexes = None
     st.session_state.search_feedback = ""
-
+    
+if "search_results" not in st.session_state:
+    st.session_state.search_results = []
+    
 if "bom" not in st.session_state:
     st.session_state.bom = {}
 
