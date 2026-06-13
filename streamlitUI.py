@@ -985,11 +985,11 @@ st.markdown(
 with st.sidebar:
     st.header("Navigation")
 
-    #roots dropdown
+    # roots dropdown
     roots = get_root_nodes()
     root_map = {r["id"]: r["label"] for r in roots}
     browse_options = [""] + list(root_map.keys())
-    #browseRoot
+
     current_root_id = (
         st.session_state.path_ids[0]
         if st.session_state.path_ids
@@ -1006,64 +1006,57 @@ with st.sidebar:
         key="top_level_root_picker",
     )
 
-    #
     if browse_pick != current_root_id:
-    if browse_pick:
-        st.session_state.has_searched = True
-        st.session_state.path_ids = [browse_pick]
-        st.session_state.root_indexes = None
-        st.session_state.search_feedback = ""
-        st.session_state.search_results = []
-    else:
-        st.session_state.has_searched = False
-        st.session_state.path_ids = []
-        st.session_state.root_indexes = None
-        st.session_state.search_feedback = ""
-        st.session_state.search_results = []
+        if browse_pick:
+            st.session_state.has_searched = True
+            st.session_state.path_ids = [browse_pick]
+            st.session_state.root_indexes = None
+            st.session_state.search_feedback = ""
+            st.session_state.search_results = []
+        else:
+            st.session_state.has_searched = False
+            st.session_state.path_ids = []
+            st.session_state.root_indexes = None
+            st.session_state.search_feedback = ""
+            st.session_state.search_results = []
 
-    st.rerun()
-    #end dropdown roots
-      
+        st.rerun()
+    # end dropdown roots
 
     with st.form("global_material_search", clear_on_submit=False):
         search_query = st.text_input("query", placeholder="", label_visibility="collapsed")
         search_submitted = st.form_submit_button("Search")
 
-    #
     if search_submitted:
-    q = search_query.strip()
-    if not q:
-        st.session_state.search_results = []
-        st.session_state.search_feedback = "Enter a search term."
-    else:
-        st.session_state.search_results = search_materials(q)
-        if st.session_state.search_results:
-            st.session_state.search_feedback = (
-                f"{len(st.session_state.search_results)} match(es) for “{q}”."
-            )
+        q = search_query.strip()
+        if not q:
+            st.session_state.search_results = []
+            st.session_state.search_feedback = "Enter a search term."
         else:
-            st.session_state.search_feedback = f"No materials found for “{q}”."
-
-if st.session_state.search_feedback:
-    st.caption(st.session_state.search_feedback)
-
-if st.session_state.search_results:
-    st.markdown("**Search results**")
-    for hit in st.session_state.search_results:
-        label = hit.get("label") or hit.get("id") or "Unknown"
-        if st.button(label, key=f"search_pick_{hit['id']}", use_container_width=True):
-            path_ids = hit.get("path_ids") or [hit["id"]]
-            st.session_state.has_searched = True
-            st.session_state.path_ids = path_ids
-            st.session_state.root_indexes = None
-            st.session_state["top_level_root_picker"] = path_ids[0]
-            st.rerun()
+            st.session_state.search_results = search_materials(q)
+            if st.session_state.search_results:
+                st.session_state.search_feedback = (
+                    f"{len(st.session_state.search_results)} match(es) for “{q}”."
+                )
+            else:
+                st.session_state.search_feedback = f"No materials found for “{q}”."
 
     if st.session_state.search_feedback:
         st.caption(st.session_state.search_feedback)
 
-    
-    #start filter clear
+    if st.session_state.search_results:
+        st.markdown("**Search results**")
+        for hit in st.session_state.search_results:
+            label = hit.get("label") or hit.get("id") or "Unknown"
+            if st.button(label, key=f"search_pick_{hit['id']}", use_container_width=True):
+                path_ids = hit.get("path_ids") or [hit["id"]]
+                st.session_state.has_searched = True
+                st.session_state.path_ids = path_ids
+                st.session_state.root_indexes = None
+                st.session_state["top_level_root_picker"] = path_ids[0]
+                st.rerun()
+
+    # start filter clear
     filter_pick = st.selectbox(
         "Only show submaterials with:",
         options=FILTER_ATTR_OPTIONS,
@@ -1085,9 +1078,8 @@ if st.session_state.search_results:
         if apply_filter_auto_dive(indexes):
             st.rerun()
         render_clickable_path(st.session_state.path_ids, indexes)
-    #end filter clear
-    
-    #compare list
+    # end filter clear
+
     # compare list
     if st.session_state.compare_materials:
         st.divider()
@@ -1102,20 +1094,16 @@ if st.session_state.search_results:
                 with name_col:
                     st.caption(f"• {m['name']}")
                 with reject_col:
-                    if st.button(
-                        "✕",
-                        key=f"reject_compare_{m['id']}"):
+                    if st.button("✕", key=f"reject_compare_{m['id']}"):
                         remove_material_from_compare(m["id"])
                         st.rerun()
-        if st.button(
-            "Clear compare list",
-            use_container_width=True):
+        if st.button("Clear compare list", use_container_width=True):
             st.session_state.compare_materials = []
             st.session_state.compare_parts = []
             st.session_state.show_compare_view = False
             st.rerun()
-            
-    #end compare list
+    # end compare list
+
     st.divider()
     st.caption("Bill of materials")
     if not st.session_state.bom:
@@ -1135,7 +1123,6 @@ if st.session_state.search_results:
     if st.button("Clear bill", use_container_width=True):
         st.session_state.bom = {}
         st.rerun()
-
 
 
 # =============================================================================
