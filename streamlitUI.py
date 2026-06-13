@@ -333,7 +333,7 @@ def search_materials(query: str) -> list[dict[str, Any]]:
         OPTIONAL MATCH p = (root:{NODE_LABEL})-[:{CHILD_REL}*0..]->(n)
         WHERE NOT ()-[:{CHILD_REL}]->(root)
 
-        WITH n, p,
+        WITH n, p, root,
              CASE
                  WHEN toLower(coalesce(n.name, '')) = $q THEN 0
                  WHEN toLower(coalesce(n.id, '')) = $q THEN 1
@@ -347,7 +347,7 @@ def search_materials(query: str) -> list[dict[str, Any]]:
         RETURN
             n.id AS id,
             coalesce(n.name, n.id) AS label,
-            [x IN nodes(p) | x.id] AS path_ids
+            root.id AS root_id
         ORDER BY rank_score, label
         """,
         {"q": q},
