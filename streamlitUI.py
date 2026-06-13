@@ -785,6 +785,10 @@ def render_child_branch(indexes, node):
         title += f" [{value_count} values]"
 
     with st.expander(title, expanded=False):
+        if st.button("Open here", key=f"open_{node['id']}"):
+            st.session_state.path_ids = path_to_node(indexes, node["id"])
+            st.rerun()
+
         cmp_key = f"cmp_child_{node['id']}"
         st.checkbox(
             "Compare",
@@ -947,15 +951,19 @@ def filter_bom_dataframe(
 # =============================================================================
 # SECTION 10 — SESSION STATE
 # =============================================================================
+
 if "has_searched" not in st.session_state:
     st.session_state.has_searched = False
     st.session_state.path_ids = []
     st.session_state.root_indexes = None
     st.session_state.search_feedback = ""
-    
+
 if "search_results" not in st.session_state:
     st.session_state.search_results = []
-    
+
+if "nav_target_id" not in st.session_state:
+    st.session_state.nav_target_id = None
+
 if "bom" not in st.session_state:
     st.session_state.bom = {}
 
@@ -970,7 +978,6 @@ if "compare_materials" not in st.session_state:
 
 if "show_compare_view" not in st.session_state:
     st.session_state.show_compare_view = False
-
 # =============================================================================
 # SECTION 11 — APP STARTUP
 # =============================================================================
@@ -1003,7 +1010,6 @@ with st.sidebar:
         if current_root_id in browse_options
         else 0,
         format_func=lambda rid: "— select —" if rid == "" else root_map[rid],
-        key="top_level_root_picker",
     )
 
     if browse_pick != current_root_id:
@@ -1011,33 +1017,40 @@ with st.sidebar:
             st.session_state.has_searched = True
             st.session_state.path_ids = [browse_pick]
             st.session_state.root_indexes = None
+            st.session_state.nav_target_id = None
             st.session_state.search_feedback = ""
             st.session_state.search_results = []
         else:
             st.session_state.has_searched = False
             st.session_state.path_ids = []
             st.session_state.root_indexes = None
+            st.session_state.nav_target_id = None
             st.session_state.search_feedback = ""
             st.session_state.search_results = []
 
         st.rerun()
-    # end dropdown roots
 
     with st.form("global_material_search", clear_on_submit=False):
         search_query = st.text_input("query", placeholder="", label_visibility="collapsed")
         search_submitted = st.form_submit_button("Search")
 
     if search_submitted:
-        #
         q = search_query.strip()
         if not q:
             st.session_state.search_results = []
             st.session_state.search_feedback = "Enter a search term."
         else:
-            st.session_state.search_results = search_materials(q)
-            if st.session_state.search_results:
+            seen: set[str] = set()
+            unique: list[dict[str, Any]] = []
+            for hit in search_materials(q):
+                hid = hit.get("id")
+                if hid and hid not in seen:
+                    seen.add(hid)
+                    unique.append(hit)
+            st.session_state.search_results = unique
+            if unique:
                 st.session_state.search_feedback = (
-                    f"{len(st.session_state.search_results)} match(es) for “{q}”."
+                    f"{len(unique)} match(es) for “{q}”."
                 )
             else:
                 st.session_state.search_feedback = f"No materials found for “{q}”."
@@ -1049,15 +1062,21 @@ with st.sidebar:
         st.markdown("**Search results**")
         for i, hit in enumerate(st.session_state.search_results):
             label = hit.get("label") or hit.get("id") or "Unknown"
-            if st.button(label, key=f"search_pick_{i}_{hit['id']}", use_container_width=True):
-                path_ids = hit.get("path_ids") or [hit["id"]]
-                st.session_state.has_searched = True
-                st.session_state.path_ids = path_ids
-                st.session_state.root_indexes = None
-                st.session_state["top_level_root_picker"] = path_ids[0]
-                st.rerun()
+            if st.button(
+                label,
+                key=f"search_pick_{i}_{hit['id']}",
+                use_container_width=True,
+            ):
+                root_id = hit.get("root_id")
+                if not root_id:
+                    st.session_state.search_feedback = f"No root found for {label}."
+                else:
+                    st.session_state.has_searched = True
+                    st.session_state.nav_target_id = hit["id"]
+                    st.session_state.path_ids = [root_id]
+                    st.session_state.root_indexes = None
+                    st.rerun()
 
-    # start filter clear
     filter_pick = st.selectbox(
         "Only show submaterials with:",
         options=FILTER_ATTR_OPTIONS,
@@ -1076,12 +1095,16 @@ with st.sidebar:
         root_rows = fetch_root_subtree(root_id)
         indexes = build_subtree_indexes(root_rows, root_id)
         st.session_state.root_indexes = indexes
+
+        target = st.session_state.nav_target_id or st.session_state.path_ids[-1]
+        if target in indexes["nodes_by_id"]:
+            st.session_state.path_ids = path_to_node(indexes, target)
+            st.session_state.nav_target_id = None
+
         if apply_filter_auto_dive(indexes):
             st.rerun()
         render_clickable_path(st.session_state.path_ids, indexes)
-    # end filter clear
 
-    # compare list
     if st.session_state.compare_materials:
         st.divider()
         st.markdown("**Compare List**")
@@ -1103,7 +1126,6 @@ with st.sidebar:
             st.session_state.compare_parts = []
             st.session_state.show_compare_view = False
             st.rerun()
-    # end compare list
 
     st.divider()
     st.caption("Bill of materials")
@@ -1124,8 +1146,6 @@ with st.sidebar:
     if st.button("Clear bill", use_container_width=True):
         st.session_state.bom = {}
         st.rerun()
-
-
 # =============================================================================
 # SECTION 13 — MAIN AREA GATE
 # =============================================================================
