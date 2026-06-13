@@ -71,9 +71,6 @@ st.markdown(
         opacity: 0.6;
         margin: 0 0.25rem;
     }
-
-    [data-testid="stForm"] button[kind="formSubmit"] {
-        display: none !important;
     }
 
     .compare-scroll {
