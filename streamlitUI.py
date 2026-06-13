@@ -1173,7 +1173,7 @@ with tab_path:
     for i, pn in enumerate(path_nodes):
         is_current = i == len(path_nodes) - 1
         name = node_name(pn)
-        attr_rows = attr_rows_for_display(pn)
+        attr_rows = filtered_attr_rows_for_display(pn)
         all_children = indexes["children_by_parent"].get(pn["id"], [])
 
         title = name
@@ -1186,26 +1186,25 @@ with tab_path:
 
         with st.expander(title, expanded=is_current):
 
-            attr_rows = filtered_attr_rows_for_display(pn)
+            attr_groups = filtered_grouped_attr_rows_for_display(pn)
 
             if attr_groups:
                 for group_name, group_rows in attr_groups.items():
                     st.markdown(f"**{group_name}**")
-
                     st.dataframe(
                         pd.DataFrame(group_rows),
                         use_container_width=True,
                         hide_index=True,
-                        height=min(
-                            38 + 28 * len(group_rows),
-                            260,
-                        ),
+                        height=min(38 + 28 * len(group_rows), 260),
                     )
             else:
-                st.caption("No attribute values on this node.")
+                block = active_filter_block()
+                if block:
+                    st.caption(f"No `{block}` data on this node.")
+                else:
+                    st.caption("No attribute values on this node.")
 
             cmp_key = f"cmp_{pn['id']}_{i}"
-
             st.checkbox(
                 "Compare",
                 value=is_material_in_compare(pn["id"]),
@@ -1215,7 +1214,6 @@ with tab_path:
             )
 
             cb_key = f"bill_{pn['id']}_path_{i}"
-
             st.checkbox(
                 "Add to bill of materials",
                 value=is_in_bill(pn["id"]),
@@ -1227,17 +1225,20 @@ with tab_path:
     current = path_nodes[-1]
     children = visible_submaterials(indexes, current["id"])
 
-    st.markdown("**Submaterials**")
+    block = active_filter_block()
+    if block:
+        st.markdown(f"**Submaterials** — showing nodes with `{block}`")
+    else:
+        st.markdown("**Submaterials**")
 
     if not children:
         if st.session_state.filter_attr_block == "(no filter)":
             st.caption("No submaterials here.")
         else:
-            st.caption("No submaterials match the current filter.")
+            st.caption(f"No submaterials with `{st.session_state.filter_attr_block}` under this node.")
     else:
         for child in children:
             render_child_branch(indexes, child)
-                
 # --- TAB 2 ---
 with tab_table:
     st.subheader("All materials under this node — every extracted value")
