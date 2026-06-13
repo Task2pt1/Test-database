@@ -526,30 +526,29 @@ def apply_filter_auto_dive(indexes: dict[str, Any]) -> bool:
     if not st.session_state.path_ids:
         return False
 
-    current_path = list(st.session_state.path_ids)
+    current_id = st.session_state.path_ids[-1]
+    current_node = indexes["nodes_by_id"].get(current_id)
 
-    for candidate_id in reversed(current_path):
-        filtered_children = filter_nodes_by_attr(
-            indexes["children_by_parent"].get(candidate_id, [])
-        )
-        if filtered_children:
+    # Current node has the filtered block → stay
+    if current_node and node_passes_submaterial_filter(current_node):
+        return False
+
+    # Current node can show matching submaterials → stay
+    if visible_submaterials(indexes, current_id):
+        return False
+
+    # Walk up to nearest ancestor that can show matches
+    for candidate_id in reversed(st.session_state.path_ids[:-1]):
+        if visible_submaterials(indexes, candidate_id):
             new_path = path_to_node(indexes, candidate_id)
-            if new_path != current_path:
+            if new_path != st.session_state.path_ids:
                 st.session_state.path_ids = new_path
                 return True
             return False
 
-    for candidate_id in reversed(current_path):
-        candidate_node = indexes["nodes_by_id"].get(candidate_id)
-        if candidate_node and node_passes_submaterial_filter(candidate_node):
-            new_path = path_to_node(indexes, candidate_id)
-            if new_path != current_path:
-                st.session_state.path_ids = new_path
-                return True
-            return False
-
-    root_id = current_path[0]
-    if current_path != [root_id]:
+    # Last resort: jump to root
+    root_id = st.session_state.path_ids[0]
+    if st.session_state.path_ids != [root_id]:
         st.session_state.path_ids = [root_id]
         return True
 
@@ -561,7 +560,30 @@ def attr_rows_for_display(node: dict[str, Any]) -> list[dict[str, str]]:
     
 def node_has_values(node: dict[str, Any]) -> bool:
     return bool(flatten_compare_props(node.get("props") or {}))
+    
+def active_filter_block() -> str | None:
+    choice = st.session_state.get("filter_attr_block", "(no filter)")
+    return None if choice == "(no filter)" else choice
 
+def filtered_attr_rows_for_display(node: dict[str, Any]) -> list[dict[str, str]]:
+    block = active_filter_block()
+    parsed = parse_props(node.get("props") or {})
+
+    if block:
+        if block not in parsed or parsed[block] in (None, "", {}, []):
+            return []
+        return flatten_leaves(parsed[block], block)
+
+    return extract_attribute_rows(node.get("props") or {})
+
+def filtered_grouped_attr_rows_for_display(
+    node: dict[str, Any],
+) -> dict[str, list[dict[str, str]]]:
+    block = active_filter_block()
+    if block:
+        rows = filtered_attr_rows_for_display(node)
+        return {block: rows} if rows else {}
+    return grouped_attr_rows_for_display(node)
 
 def summarize_branch(indexes: dict[str, Any], node_id: str) -> dict[str, Any]:
     direct_children = indexes["children_by_parent"].get(node_id, [])
@@ -747,35 +769,20 @@ def on_nav_child(child_id: str) -> None:
         st.rerun()
 
 def render_child_branch(indexes, node):
-
     cname = node_name(node)
+    children = indexes["children_by_parent"].get(node["id"], [])
 
-    children = indexes["children_by_parent"].get(
-        node["id"],
-        [],
-    )
-
-    child_attr_groups = grouped_attr_rows_for_display(node)
-
-    choice = st.session_state.filter_attr_block
-
-    if choice == "(no filter)":
-        preview_rows = attr_rows_for_display(node)
-    else:
-        preview_rows = child_attr_groups.get(choice, [])
+    preview_rows = filtered_attr_rows_for_display(node)
+    block = active_filter_block()
 
     title = cname
-
     if children:
         title += f" ({len(children)} submaterials)"
-
     if preview_rows:
         title += f" [{len(preview_rows)} values]"
 
     with st.expander(title, expanded=False):
-
         cmp_key = f"cmp_child_{node['id']}"
-
         st.checkbox(
             "Compare",
             value=is_material_in_compare(node["id"]),
@@ -785,7 +792,6 @@ def render_child_branch(indexes, node):
         )
 
         bom_key = f"bill_child_{node['id']}"
-
         st.checkbox(
             "Add to BOM",
             value=is_in_bill(node["id"]),
@@ -794,26 +800,23 @@ def render_child_branch(indexes, node):
             args=(node["id"], bom_key),
         )
 
-        attr_groups = grouped_attr_rows_for_display(node)
+        attr_groups = filtered_grouped_attr_rows_for_display(node)
 
         if attr_groups:
-
             for group_name, group_rows in attr_groups.items():
-
                 st.markdown(f"**{group_name}**")
-
                 st.dataframe(
                     pd.DataFrame(group_rows),
                     use_container_width=True,
                     hide_index=True,
-                    height=min(
-                        38 + 28 * len(group_rows),
-                        260,
-                    ),
+                    height=min(38 + 28 * len(group_rows), 260),
                 )
+        elif block:
+            st.caption(f"No `{block}` data on this node.")
 
         for child in children:
             render_child_branch(indexes, child)
+            
 # =============================================================================
 # SECTION 8 — BOM HELPERS
 # =============================================================================
@@ -992,27 +995,24 @@ with st.sidebar:
     roots = get_root_nodes()
     root_map = {r["id"]: r["label"] for r in roots}
     browse_options = [""] + list(root_map.keys())
-
-    if "browse_root" not in st.session_state:
-        st.session_state.browse_root = ""
-
-    if st.session_state.path_ids:
-        current_root_id = st.session_state.path_ids[0]
-        if current_root_id in root_map:
-            st.session_state.browse_root = current_root_id
+    #browseRoot
+    current_root_id = (
+        st.session_state.path_ids[0]
+        if st.session_state.path_ids
+        else ""
+    )
 
     browse_pick = st.selectbox(
         "Top level",
         options=browse_options,
-        index=browse_options.index(st.session_state.browse_root)
-        if st.session_state.browse_root in browse_options
+        index=browse_options.index(current_root_id)
+        if current_root_id in browse_options
         else 0,
         format_func=lambda rid: "— select —" if rid == "" else root_map[rid],
+        key="top_level_root_picker",
     )
 
-    if browse_pick != st.session_state.browse_root:
-        st.session_state.browse_root = browse_pick
-    
+    if browse_pick != current_root_id:
         if browse_pick:
             st.session_state.has_searched = True
             st.session_state.path_ids = [browse_pick]
@@ -1023,9 +1023,10 @@ with st.sidebar:
             st.session_state.path_ids = []
             st.session_state.root_indexes = None
             st.session_state.search_feedback = ""
-    
+
         st.rerun()
-        #end dropdoen roots
+    #end dropdown roots
+      
 
     with st.form("global_material_search", clear_on_submit=False):
         search_query = st.text_input("query", placeholder="", label_visibility="collapsed")
@@ -1152,7 +1153,7 @@ tab_path, tab_table, tab_compare, tab_bom = st.tabs(
     ["Path + explore", "All values (table)", "Compare", "Export BOM"])
 
 # --- TAB 1 ---
-# --- TAB 1 ---
+
 with tab_path:
     path_nodes = [
         indexes["nodes_by_id"][nid]
@@ -1185,7 +1186,7 @@ with tab_path:
 
         with st.expander(title, expanded=is_current):
 
-            attr_groups = grouped_attr_rows_for_display(pn)
+            attr_rows = filtered_attr_rows_for_display(pn)
 
             if attr_groups:
                 for group_name, group_rows in attr_groups.items():
