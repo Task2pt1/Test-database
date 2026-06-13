@@ -1028,6 +1028,7 @@ with st.sidebar:
         search_submitted = st.form_submit_button("Search")
 
     if search_submitted:
+        #
         q = search_query.strip()
         if not q:
             st.session_state.search_results = []
@@ -1046,9 +1047,9 @@ with st.sidebar:
 
     if st.session_state.search_results:
         st.markdown("**Search results**")
-        for hit in st.session_state.search_results:
+        for i, hit in enumerate(st.session_state.search_results):
             label = hit.get("label") or hit.get("id") or "Unknown"
-            if st.button(label, key=f"search_pick_{hit['id']}", use_container_width=True):
+            if st.button(label, key=f"search_pick_{i}_{hit['id']}", use_container_width=True):
                 path_ids = hit.get("path_ids") or [hit["id"]]
                 st.session_state.has_searched = True
                 st.session_state.path_ids = path_ids
