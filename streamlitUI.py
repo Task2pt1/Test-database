@@ -170,114 +170,98 @@ def parse_stored(v: Any) -> Any:
 def parse_props(props: dict[str, Any] | None) -> dict[str, Any]:
     return {k: parse_stored(v) for k, v in (props or {}).items()}
 
+def attr_blocks(
+    props: dict[str, Any] | None,
+    filter_block: str | None = None,
+) -> dict[str, Any]:
+    parsed = parse_props(props)
+    if filter_block:
+        val = parsed.get(filter_block)
+        return {filter_block: val} if val not in (None, "", {}, []) else {}
 
-def flatten_leaves(obj: Any, prefix: str = "") -> list[dict[str, str]]:
+    return {
+        k: parsed[k]
+        for k in ATTR_BLOCKS
+        if k in parsed and parsed[k] not in (None, "", {}, [])
+    }
+
+
+def _flatten_obj(
+    obj: Any,
+    prefix: str = "",
+    *,
+    combine_value_unit: bool = False,
+) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
 
     if isinstance(obj, dict):
+        if (
+            combine_value_unit
+            and "value" in obj
+            and obj.get("value") not in (None, "")
+        ):
+            value = str(obj["value"]).strip()
+            unit = str(obj.get("unit", "")).strip()
+            rows.append({"attribute": prefix, "value": f"{value} {unit}".strip()})
+            return rows
+
         for k, v in obj.items():
+            if combine_value_unit and k in {"unit", "flow", "compartment"}:
+                continue
             path = f"{prefix}.{k}" if prefix else k
-            rows.extend(flatten_leaves(v, path))
-    elif isinstance(obj, list):
+            rows.extend(
+                _flatten_obj(v, path, combine_value_unit=combine_value_unit)
+            )
+        return rows
+
+    if isinstance(obj, list):
         if obj and all(not isinstance(x, (dict, list)) for x in obj):
-            rows.append({"attribute": prefix, "value": ", ".join(str(x) for x in obj)})
+            rows.append(
+                {"attribute": prefix, "value": ", ".join(str(x) for x in obj)}
+            )
         else:
             for i, item in enumerate(obj):
-                rows.extend(flatten_leaves(item, f"{prefix}[{i}]"))
-    elif obj not in (None, ""):
+                rows.extend(
+                    _flatten_obj(
+                        item,
+                        f"{prefix}[{i}]",
+                        combine_value_unit=combine_value_unit,
+                    )
+                )
+        return rows
+
+    if obj not in (None, ""):
         rows.append({"attribute": prefix, "value": str(obj)})
 
     return rows
 
-def flatten_all_props(props: dict[str, Any] | None) -> list[dict[str, str]]:
-    parsed = parse_props(props)
+
+def flatten_blocks(
+    blocks: dict[str, Any],
+    *,
+    combine_value_unit: bool = False,
+) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
-
-    for key, value in parsed.items():
-        if key in META_KEYS:
-            continue
-        if value in (None, "", {}, []):
-            continue
-        rows.extend(flatten_leaves(value, key))
-
-    return rows
-    
-
-def flatten_compare_props(props: dict[str, Any] | None) -> list[dict[str, str]]:
-    parsed = parse_props(props)
-    rows: list[dict[str, str]] = []
-
-    def walk(obj: Any, path: str = "") -> None:
-        if isinstance(obj, dict):
-            if "value" in obj and obj["value"] not in (None, ""):
-                value = str(obj["value"]).strip()
-                unit = str(obj.get("unit", "")).strip()
-                rows.append(
-                    {
-                        "attribute": path,
-                        "value": f"{value} {unit}".strip(),
-                    }
-                )
-                return
-
-            for key, value in obj.items():
-                if key in {"unit", "flow", "compartment"}:
-                    continue
-                next_path = f"{path}.{key}" if path else key
-                walk(value, next_path)
-            return
-
-        if isinstance(obj, list):
-            if obj and all(not isinstance(item, (dict, list)) for item in obj):
-                rows.append(
-                    {
-                        "attribute": path,
-                        "value": ", ".join(str(item) for item in obj),
-                    }
-                )
-            else:
-                for i, item in enumerate(obj):
-                    walk(item, f"{path}[{i}]")
-            return
-
-        if obj not in (None, "", {}, []):
-            rows.append({"attribute": path, "value": str(obj)})
-
-    for key, value in parsed.items():
-        if key in META_KEYS or value in (None, "", {}, []):
-            continue
-        walk(value, key)
-
-    deduped: list[dict[str, str]] = []
-    seen: set[tuple[str, str]] = set()
-
-    for row in rows:
-        marker = (row["attribute"], row["value"])
-        if marker not in seen:
-            seen.add(marker)
-            deduped.append(row)
-
-    return deduped
-    
-def extract_attribute_rows(props: dict[str, Any]) -> list[dict[str, str]]:
-    parsed = parse_props(props)
-    rows: list[dict[str, str]] = []
-
-    for key in ATTR_BLOCKS:
-        if key not in parsed or parsed[key] in (None, "", {}, []):
-            continue
-        rows.extend(flatten_leaves(parsed[key], key))
-
-    for k, v in parsed.items():
-        if k in META_KEYS or k in ATTR_BLOCKS or v in (None, "", {}, []):
-            continue
-        rows.extend(flatten_leaves(v, k))
-
+    for name, val in blocks.items():
+        rows.extend(
+            _flatten_obj(val, name, combine_value_unit=combine_value_unit)
+        )
+    if combine_value_unit:
+        seen: set[tuple[str, str]] = set()
+        deduped = []
+        for row in rows:
+            key = (row["attribute"], row["value"])
+            if key not in seen:
+                seen.add(key)
+                deduped.append(row)
+        return deduped
     return rows
 
+def attrs_to_wide_row(rows: list[dict[str, str]]) -> dict[str, str]:
+    return {r["attribute"]: r["value"] for r in rows}
 
-def attrs_to_wide_row(attr_rows: list[dict[str, str]]) -> dict[str, str]:
-    return {r["attribute"]: r["value"] for r in attr_rows}
+
+
 
 
 def node_name(node: dict[str, Any]) -> str:
@@ -460,12 +444,69 @@ def get_subtree_rows_from_indexes(node_id: str, indexes: dict[str, Any]) -> list
 # =============================================================================
 # SECTION 7 — FILTER, COMPARE, AND CURRENT-NODE DISPLAY
 # =============================================================================
-def has_attr_block(props: dict[str, Any] | None, block: str) -> bool:
-    parsed = parse_props(props)
-    val = parsed.get(block)
-    return val not in (None, "", {}, [])
 
 
+def is_flat_dict(obj: Any) -> bool:
+    return isinstance(obj, dict) and all(
+        not isinstance(v, (dict, list)) for v in obj.values()
+    )
+
+
+def cell_to_display(v: Any) -> Any:
+    if isinstance(v, (dict, list)):
+        return json.dumps(v, ensure_ascii=False)
+    return v
+
+
+def render_nested(key: str | None, obj: Any, level: int = 0) -> None:
+    if obj in (None, "", {}, []):
+        return
+
+    if isinstance(obj, dict):
+        if is_flat_dict(obj):
+            if key:
+                st.markdown(f"**{key}**")
+            st.dataframe(pd.DataFrame([{k: cell_to_display(v) for k, v in obj.items()}]),
+                         use_container_width=True, hide_index=True)
+            return
+        if key:
+            st.markdown(f"**{key}**")
+        for k, v in obj.items():
+            render_nested(k, v, level + 1)
+        return
+
+    if isinstance(obj, list):
+        if key:
+            st.markdown(f"**{key}**")
+        if obj and all(isinstance(x, dict) for x in obj):
+            st.dataframe(
+                pd.DataFrame([{k: cell_to_display(v) for k, v in x.items()} for x in obj]),
+                use_container_width=True,
+                hide_index=True,
+                height=min(38 + 35 * len(obj), 420),
+            )
+        else:
+            st.write(", ".join(str(x) for x in obj))
+        return
+
+    if key:
+        st.write(f"**{key}:** {obj}")
+
+
+def render_node_blocks(node: dict[str, Any]) -> None:
+    blocks = attr_blocks(
+        node.get("props"),
+        filter_block=active_filter_block(),
+    )
+    if not blocks:
+        block = active_filter_block()
+        st.caption(f"No `{block}` data on this node." if block else "No attribute values on this node.")
+        return
+
+    for group_name, group_val in blocks.items():
+        st.subheader(group_name)
+        render_nested(None, group_val)
+        
 def node_passes_submaterial_filter(node: dict[str, Any]) -> bool:
     choice = st.session_state.filter_attr_block
     if choice == "(no filter)":
@@ -555,35 +596,17 @@ def apply_filter_auto_dive(indexes: dict[str, Any]) -> bool:
     return False
 
 
-def attr_rows_for_display(node: dict[str, Any]) -> list[dict[str, str]]:
-    return extract_attribute_rows(node.get("props") or {})
+
     
 def node_has_values(node: dict[str, Any]) -> bool:
-    return bool(flatten_compare_props(node.get("props") or {}))
+    return bool(flatten_blocks(attr_blocks(node.get("props"))))
     
 def active_filter_block() -> str | None:
     choice = st.session_state.get("filter_attr_block", "(no filter)")
     return None if choice == "(no filter)" else choice
 
-def filtered_attr_rows_for_display(node: dict[str, Any]) -> list[dict[str, str]]:
-    block = active_filter_block()
-    parsed = parse_props(node.get("props") or {})
 
-    if block:
-        if block not in parsed or parsed[block] in (None, "", {}, []):
-            return []
-        return flatten_leaves(parsed[block], block)
 
-    return extract_attribute_rows(node.get("props") or {})
-
-def filtered_grouped_attr_rows_for_display(
-    node: dict[str, Any],
-) -> dict[str, list[dict[str, str]]]:
-    block = active_filter_block()
-    if block:
-        rows = filtered_attr_rows_for_display(node)
-        return {block: rows} if rows else {}
-    return grouped_attr_rows_for_display(node)
 
 def summarize_branch(indexes: dict[str, Any], node_id: str) -> dict[str, Any]:
     direct_children = indexes["children_by_parent"].get(node_id, [])
@@ -662,18 +685,7 @@ def on_compare_toggle(material_id: str, material_name: str, widget_key: str) -> 
         if not st.session_state.compare_materials:
             st.session_state.show_compare_view = False
 
-def grouped_attr_rows_for_display(node: dict[str, Any]) -> dict[str, list[dict[str, str]]]:
-    grouped: dict[str, list[dict[str, str]]] = defaultdict(list)
-    for row in attr_rows_for_display(node):
-        top_key = row["attribute"].split(".", 1)[0]
-        grouped[top_key].append(row)
-    return dict(sorted(grouped.items()))
 
-def on_attr_group_toggle(material_id: str, group_name: str) -> None:
-    state_key = f"open_attr_group_{material_id}"
-    st.session_state[state_key] = (
-        None if st.session_state.get(state_key) == group_name else group_name
-    )
 
 
 def render_parts_compare(parts: list[dict[str, str]]) -> None:
@@ -772,14 +784,13 @@ def render_child_branch(indexes, node):
     cname = node_name(node)
     children = indexes["children_by_parent"].get(node["id"], [])
 
-    preview_rows = filtered_attr_rows_for_display(node)
-    block = active_filter_block()
+    value_count = len(flatten_blocks(attr_blocks(node.get("props"), active_filter_block())))
 
     title = cname
     if children:
         title += f" ({len(children)} submaterials)"
-    if preview_rows:
-        title += f" [{len(preview_rows)} values]"
+    if value_count:
+        title += f" [{value_count} values]"
 
     with st.expander(title, expanded=False):
         cmp_key = f"cmp_child_{node['id']}"
@@ -800,19 +811,7 @@ def render_child_branch(indexes, node):
             args=(node["id"], bom_key),
         )
 
-        attr_groups = filtered_grouped_attr_rows_for_display(node)
-
-        if attr_groups:
-            for group_name, group_rows in attr_groups.items():
-                st.markdown(f"**{group_name}**")
-                st.dataframe(
-                    pd.DataFrame(group_rows),
-                    use_container_width=True,
-                    hide_index=True,
-                    height=min(38 + 28 * len(group_rows), 260),
-                )
-        elif block:
-            st.caption(f"No `{block}` data on this node.")
+        render_node_blocks(node)
 
         for child in children:
             render_child_branch(indexes, child)
@@ -828,7 +827,7 @@ def is_in_bill(material_id: str) -> bool:
 
 
 def add_to_bill_from_node(node: dict[str, Any], category: str) -> None:
-    attr_rows = flatten_all_props(node.get("props") or {})
+    attr_rows = flatten_blocks(attr_blocks(node.get("props")))
     entry = {
         "id": node["id"],
         "name": node_name(node),
@@ -907,8 +906,8 @@ def build_bom_dataframe() -> pd.DataFrame:
                 "material_id": item["id"],
                 "material_name": item["name"],
             }
-
-            for attr_row in extract_attribute_rows(node.get("props") or {}):
+            #
+            for attr_row in flatten_blocks(attr_blocks(node.get("props"))):
                 row[attr_row["attribute"]] = attr_row["value"]
 
             bom_rows.append(row)
@@ -1039,7 +1038,7 @@ with st.sidebar:
             st.session_state.path_ids = found_path_ids
             st.session_state.root_indexes = None
             st.session_state.search_feedback = ""
-            st.session_state.browse_root = ""
+            
             st.rerun()
         else:
             st.session_state.search_feedback = "No material found."
@@ -1173,7 +1172,10 @@ with tab_path:
     for i, pn in enumerate(path_nodes):
         is_current = i == len(path_nodes) - 1
         name = node_name(pn)
-        attr_rows = filtered_attr_rows_for_display(pn)
+       
+        
+        #
+        value_count = len(flatten_blocks(attr_blocks(pn.get("props"), active_filter_block())))
         all_children = indexes["children_by_parent"].get(pn["id"], [])
 
         title = name
@@ -1181,28 +1183,12 @@ with tab_path:
         if all_children:
             title += f" ({len(all_children)} submaterials)"
 
-        if attr_rows:
-            title += f" [{len(attr_rows)} values]"
+        if value_count:
+            title += f" [{value_count} values]"
 
         with st.expander(title, expanded=is_current):
 
-            attr_groups = filtered_grouped_attr_rows_for_display(pn)
-
-            if attr_groups:
-                for group_name, group_rows in attr_groups.items():
-                    st.markdown(f"**{group_name}**")
-                    st.dataframe(
-                        pd.DataFrame(group_rows),
-                        use_container_width=True,
-                        hide_index=True,
-                        height=min(38 + 28 * len(group_rows), 260),
-                    )
-            else:
-                block = active_filter_block()
-                if block:
-                    st.caption(f"No `{block}` data on this node.")
-                else:
-                    st.caption("No attribute values on this node.")
+            render_node_blocks(pn)
 
             cmp_key = f"cmp_{pn['id']}_{i}"
             st.checkbox(
@@ -1248,7 +1234,7 @@ with tab_table:
         p = parse_props(row["props"])
         mat_name = p.get("name") or row["label"]
         depth = row["depth"]
-        for attr_row in flatten_all_props(row["props"] or {}):
+        for attr_row in flatten_blocks(attr_blocks(row["props"])):
             all_rows.append(
                 {
                     "depth": depth,
@@ -1324,7 +1310,10 @@ with tab_compare:
             if not material_node:
                 continue
 
-            attr_rows = flatten_compare_props(material_node.get("props") or {})
+            attr_rows = flatten_blocks(
+                attr_blocks(material_node.get("props")),
+                combine_value_unit=True,
+            )
             for attr_row in attr_rows:
                 compare_parts.append(
                     {
