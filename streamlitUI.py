@@ -181,7 +181,8 @@ def attr_blocks(
         for k in ATTR_BLOCKS
         if k in parsed and parsed[k] not in (None, "", {}, [])
     }
-
+def has_attr_block(props, block: str) -> bool:
+    return bool(attr_blocks(props, filter_block=block))
 
 def _flatten_obj(
     obj: Any,
@@ -1005,19 +1006,22 @@ with st.sidebar:
         key="top_level_root_picker",
     )
 
+    #
     if browse_pick != current_root_id:
-        if browse_pick:
-            st.session_state.has_searched = True
-            st.session_state.path_ids = [browse_pick]
-            st.session_state.root_indexes = None
-            st.session_state.search_feedback = ""
-        else:
-            st.session_state.has_searched = False
-            st.session_state.path_ids = []
-            st.session_state.root_indexes = None
-            st.session_state.search_feedback = ""
+    if browse_pick:
+        st.session_state.has_searched = True
+        st.session_state.path_ids = [browse_pick]
+        st.session_state.root_indexes = None
+        st.session_state.search_feedback = ""
+        st.session_state.search_results = []
+    else:
+        st.session_state.has_searched = False
+        st.session_state.path_ids = []
+        st.session_state.root_indexes = None
+        st.session_state.search_feedback = ""
+        st.session_state.search_results = []
 
-        st.rerun()
+    st.rerun()
     #end dropdown roots
       
 
@@ -1025,17 +1029,35 @@ with st.sidebar:
         search_query = st.text_input("query", placeholder="", label_visibility="collapsed")
         search_submitted = st.form_submit_button("Search")
 
+    #
     if search_submitted:
-        found_path_ids = search_material_path(search_query)
-        if found_path_ids:
-            st.session_state.has_searched = True
-            st.session_state.path_ids = found_path_ids
-            st.session_state.root_indexes = None
-            st.session_state.search_feedback = ""
-            
-            st.rerun()
+    q = search_query.strip()
+    if not q:
+        st.session_state.search_results = []
+        st.session_state.search_feedback = "Enter a search term."
+    else:
+        st.session_state.search_results = search_materials(q)
+        if st.session_state.search_results:
+            st.session_state.search_feedback = (
+                f"{len(st.session_state.search_results)} match(es) for “{q}”."
+            )
         else:
-            st.session_state.search_feedback = "No material found."
+            st.session_state.search_feedback = f"No materials found for “{q}”."
+
+if st.session_state.search_feedback:
+    st.caption(st.session_state.search_feedback)
+
+if st.session_state.search_results:
+    st.markdown("**Search results**")
+    for hit in st.session_state.search_results:
+        label = hit.get("label") or hit.get("id") or "Unknown"
+        if st.button(label, key=f"search_pick_{hit['id']}", use_container_width=True):
+            path_ids = hit.get("path_ids") or [hit["id"]]
+            st.session_state.has_searched = True
+            st.session_state.path_ids = path_ids
+            st.session_state.root_indexes = None
+            st.session_state["top_level_root_picker"] = path_ids[0]
+            st.rerun()
 
     if st.session_state.search_feedback:
         st.caption(st.session_state.search_feedback)
