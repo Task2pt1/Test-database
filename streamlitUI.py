@@ -985,13 +985,6 @@ st.markdown(
     '<p class="app-title">Material Ontology Explorer</p>',
     unsafe_allow_html=True,
 )
-
-# =============================================================================
-# SECTION 12 — SIDEBAR
-# =============================================================================
-with st.sidebar:
-    st.header("Navigation")
-
     # roots dropdown
     roots = get_root_nodes()
     root_map = {r["id"]: r["label"] for r in roots}
@@ -1029,6 +1022,13 @@ with st.sidebar:
             st.session_state.search_results = []
 
         st.rerun()
+        #end dropdown
+# =============================================================================
+# SECTION 12 — SIDEBAR
+# =============================================================================
+with st.sidebar:
+    st.header("Navigation")
+
 
     with st.form("global_material_search", clear_on_submit=False):
         search_query = st.text_input("query", placeholder="", label_visibility="collapsed")
