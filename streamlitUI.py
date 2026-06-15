@@ -176,7 +176,7 @@ st.markdown(
     }
 
     .mat-attrs-panel [data-testid="stVerticalBlock"] {
-        gap: 0.2rem !important;         #gap between blocks in open panel 
+        gap: 0.2rem !important;        
     }
 
     .mat-attrs-panel div[data-testid="stVerticalBlockBorderWrapper"] {
@@ -186,7 +186,7 @@ st.markdown(
     }
 
     .category-section {
-        margin: 0.15rem 0 0.05rem 0 !important;        #title spacing
+        margin: 0.15rem 0 0.05rem 0 !important;       
         font-size: 0.8rem !important;
         font-weight: 600;
         opacity: 0.85;
@@ -196,12 +196,12 @@ st.markdown(
         overflow-x: auto;
         overflow-y: hidden;
         max-width: 100%;
-        margin-bottom: 0.25rem !important;     #space after each table
+        margin-bottom: 0.25rem !important;     
         padding: 0 !important;
     }
 
     div[data-testid="stDataFrame"] {
-        margin-bottom: 0.15rem !important;   #extra under dataframe
+        margin-bottom: 0.15rem !important;   
     }
 
     [data-testid="stMain"] [data-testid="stDataFrame"],
@@ -574,10 +574,11 @@ def collect_table_sections(prefix: str, obj: Any) -> list[tuple[str, list[dict[s
 
 def render_node_all_categories(node: dict[str, Any]) -> None:
     blocks = attr_blocks(node.get("props"), filter_block=None)
+    if not blocks:
+        return
 
     for block_name, block_val in blocks.items():
         sections = collect_table_sections(block_name, block_val)
-
         if not sections:
             st.markdown(f'<p class="category-section">{block_name}</p>', unsafe_allow_html=True)
             continue
@@ -585,17 +586,12 @@ def render_node_all_categories(node: dict[str, Any]) -> None:
         for title, rows in sections:
             st.markdown(f'<p class="category-section">{title}</p>', unsafe_allow_html=True)
             df = pd.DataFrame([{k: cell_to_display(v) for k, v in row.items()} for row in rows])
-            st.markdown('<div class="hscroll-wrap">', unsafe_allow_html=True)
             st.dataframe(
                 df,
                 use_container_width=True,
                 hide_index=True,
                 height=min(38 + 35 * len(df), 320),
             )
-            #Shorter tables: lower the numbers, e.g. min(30 + 28 * len(df), 200)
-            #Taller tables: raise them, e.g. min(45 + 40 * len(df), 500)
-            st.markdown("</div>", unsafe_allow_html=True)
-
 
 def is_flat_dict(obj: Any) -> bool:
     return isinstance(obj, dict) and all(
@@ -949,7 +945,8 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
 
     cname = node_name(node)
     children = indexes["children_by_parent"].get(node_id, [])
-    value_count = len(flatten_blocks(attr_blocks(node.get("props"), filter_block=None)))
+    blocks = attr_blocks(node.get("props"), filter_block=None)
+    value_count = len(flatten_blocks(blocks)) if blocks else 0
     is_open = node_id in st.session_state.expanded_material_ids
 
     title = cname
@@ -962,56 +959,49 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
     cmp_key = f"cmp_tree_{node_id}"
     bom_key = f"bill_tree_{node_id}"
 
-    if depth:
-        st.markdown(f"<div style='margin-left:{depth * 20}px'>", unsafe_allow_html=True)
+    indent = min(depth * 0.03, 0.18)
+    row_col = st.columns([indent, 1 - indent], gap="small") if depth > 0 else None
+    row_target = row_col[1] if row_col else st
 
-    row_class = "mat-row-open" if is_open else "mat-row"
-    st.markdown(f'<div class="{row_class}">', unsafe_allow_html=True)
-
-    with st.container(border=True):
-        name_col, actions_col = st.columns([7.5, 2.2], vertical_alignment="center")
-        with name_col:
-            if st.button(label, key=f"mat_{node_id}", type="tertiary", use_container_width=True):
-                if is_open:
-                    st.session_state.expanded_material_ids.remove(node_id)
-                else:
-                    st.session_state.expanded_material_ids.append(node_id)
-                st.rerun()
-        with actions_col:
-            cmp_col, bom_col = st.columns(2, gap="small", vertical_alignment="center")
-            with cmp_col:
-                st.checkbox(
-                    "Compare",
-                    value=is_material_in_compare(node_id),
-                    key=cmp_key,
-                    on_change=on_compare_toggle,
-                    args=(node_id, cname, cmp_key),
-                )
-            with bom_col:
-                st.checkbox(
-                    "BOM",
-                    value=is_in_bill(node_id),
-                    key=bom_key,
-                    on_change=on_bill_toggle,
-                    args=(node_id, bom_key),
-                )
-
-    st.markdown("</div>", unsafe_allow_html=True)
+    with row_target:
+        with st.container(border=True):
+            name_col, actions_col = st.columns([7.5, 2.2], vertical_alignment="center")
+            with name_col:
+                if st.button(label, key=f"mat_{node_id}", type="tertiary", use_container_width=True):
+                    if is_open:
+                        st.session_state.expanded_material_ids.remove(node_id)
+                    else:
+                        st.session_state.expanded_material_ids.append(node_id)
+                    st.rerun()
+            with actions_col:
+                cmp_col, bom_col = st.columns(2, gap="small", vertical_alignment="center")
+                with cmp_col:
+                    st.checkbox(
+                        "Compare",
+                        value=is_material_in_compare(node_id),
+                        key=cmp_key,
+                        on_change=on_compare_toggle,
+                        args=(node_id, cname, cmp_key),
+                    )
+                with bom_col:
+                    st.checkbox(
+                        "BOM",
+                        value=is_in_bill(node_id),
+                        key=bom_key,
+                        on_change=on_bill_toggle,
+                        args=(node_id, bom_key),
+                    )
 
     if is_open:
-        st.markdown(
-            f'<div class="mat-attrs-panel" style="margin-left:{(depth + 1) * 20}px">',
-            unsafe_allow_html=True,
-        )
-        with st.container(border=True):
-            render_node_all_categories(node)
-        st.markdown("</div>", unsafe_allow_html=True)
+        if blocks:
+            attr_indent = min((depth + 1) * 0.03, 0.21)
+            attr_col = st.columns([attr_indent, 1 - attr_indent], gap="small")
+            with attr_col[1]:
+                with st.container(border=True):
+                    render_node_all_categories(node)
 
         for child in children:
             render_material_tree_node(indexes, child, depth + 1)
-
-    if depth:
-        st.markdown("</div>", unsafe_allow_html=True)
 
 # =============================================================================
 # SECTION 8 — BOM HELPERS
