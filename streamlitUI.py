@@ -111,8 +111,8 @@ st.markdown(
     }
 
     [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] > div {
-        gap: 0 !important;
-        min-height: 0 !important;
+        gap: 0.06 !important;
+        min-height: 0.35 !important;
     }
 
     [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] button[kind="tertiary"] {
@@ -520,12 +520,29 @@ def collect_table_sections(
         return sections
 
     if isinstance(obj, dict):
+        scalar_map = {
+            k: v for k, v in obj.items()
+            if not isinstance(v, (dict, list)) and v not in (None, "")
+        }
+        complex_items = {
+            k: v for k, v in obj.items()
+            if isinstance(v, (dict, list)) and v not in (None, "", {}, [])
+        }
+
+        if scalar_map and not complex_items:
+            sections.append((prefix, [scalar_map]))
+            return sections
+
         if is_flat_dict(obj):
             sections.append((prefix, [obj]))
-        else:
-            for k, v in obj.items():
-                child = f"{prefix} → {k}" if prefix else k
-                sections.extend(collect_table_sections(child, v))
+            return sections
+
+        if scalar_map:
+            sections.append((prefix, [scalar_map]))
+
+        for k, v in complex_items.items():
+            child = f"{prefix} → {k}" if prefix else k
+            sections.extend(collect_table_sections(child, v))
         return sections
 
     if isinstance(obj, list):
@@ -552,10 +569,9 @@ def render_node_all_categories(node: dict[str, Any]) -> None:
             continue
 
         for title, content in sections:
-            st.markdown(f'<p class="category-section">{title}</p>', unsafe_allow_html=True)
-
+            st.markdown(f"**{title}**")
             if isinstance(content, str):
-                st.markdown(f'<p class="attr-simple">{content}</p>', unsafe_allow_html=True)
+                st.write(content)
             else:
                 df = pd.DataFrame(
                     [{k: cell_to_display(v) for k, v in row.items()} for row in content]
@@ -564,8 +580,9 @@ def render_node_all_categories(node: dict[str, Any]) -> None:
                     df,
                     use_container_width=True,
                     hide_index=True,
-                    height=min(34 + 30 * len(df), 240),
+                    height=min(38 + 32 * len(df), 260),
                 )
+            st.markdown("")  # forces vertical gap between sections
                 
 def tree_indent_fraction(depth: int) -> float:
     return min(depth * 0.055, 0.33)
