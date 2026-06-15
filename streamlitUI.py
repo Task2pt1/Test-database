@@ -912,7 +912,6 @@ def tree_node_visible(indexes: dict[str, Any], node_id: str) -> bool:
         for child in indexes["children_by_parent"].get(node_id, [])
     )
 
-
 def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], depth: int = 0) -> None:
     node_id = node["id"]
     if not tree_node_visible(indexes, node_id):
@@ -929,17 +928,14 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
     if value_count:
         title += f" [{value_count} values]"
 
+    label = ("▾ " if is_open else "▸ ") + title
     cmp_key = f"cmp_tree_{node_id}"
     bom_key = f"bill_tree_{node_id}"
-    depth_class = f"tree-depth-{min(depth, 5)}"
-    open_class = "tree-row-open" if is_open else "tree-row"
 
-    st.markdown(f'<div class="{open_class} {depth_class}">', unsafe_allow_html=True)
-
-    name_col, actions_col = st.columns([7.2, 2.3], vertical_alignment="center")
+    name_col, actions_col = st.columns([7.5, 2.2], vertical_alignment="center")
 
     with name_col:
-        if st.button(title, key=f"mat_{node_id}", use_container_width=True):
+        if st.button(label, key=f"mat_{node_id}", type="tertiary", use_container_width=True):
             if is_open:
                 st.session_state.expanded_material_ids.remove(node_id)
             else:
@@ -965,19 +961,16 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                 args=(node_id, bom_key),
             )
 
-    st.markdown("</div>", unsafe_allow_html=True)
-
     if is_open:
         st.markdown(
-            f"<div style='margin-left:{(depth + 1) * 18}px; margin-bottom:0.75rem'>",
+            f"<div style='margin-left:{(depth + 1) * 18}px'>",
             unsafe_allow_html=True,
         )
         render_node_all_categories(node)
         st.markdown("</div>", unsafe_allow_html=True)
 
-    for child in children:
-        render_material_tree_node(indexes, child, depth + 1)
-
+        for child in children:
+            render_material_tree_node(indexes, child, depth + 1)
 
 # =============================================================================
 # SECTION 8 — BOM HELPERS
