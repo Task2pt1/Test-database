@@ -523,10 +523,6 @@ def render_node_all_categories(node: dict[str, Any]) -> None:
   # ALWAYS all categories on current node — sidebar filter does NOT apply here
   blocks = attr_blocks(node.get("props"), filter_block=None)
 
-  if not blocks:
-    st.caption("No attribute values on this node.")
-    return
-
   for block_name, block_val in blocks.items():
     sections = collect_table_sections(block_name, block_val)
 
