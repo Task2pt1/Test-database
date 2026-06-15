@@ -455,6 +455,42 @@ def get_subtree_rows_from_indexes(node_id: str, indexes: dict[str, Any]) -> list
 # SECTION 7 — FILTER, COMPARE, AND CURRENT-NODE DISPLAY
 # =============================================================================
 
+def all_node_data(node: dict[str, Any]) -> dict[str, Any]:
+    """Every property on the node — no ATTR_BLOCKS filter."""
+    return parse_props(node.get("props"))
+
+
+def all_node_value_count(node: dict[str, Any]) -> int:
+    return len(flatten_blocks(all_node_data(node)))
+
+
+def siblings_of(indexes: dict[str, Any], node_id: str) -> list[dict[str, Any]]:
+    parent_id = indexes["parent_by_id"].get(node_id)
+    if parent_id is None:
+        return []
+    sibs = [
+        n for n in indexes["children_by_parent"].get(parent_id, [])
+        if n["id"] != node_id
+    ]
+    sibs.sort(key=node_name)
+    return sibs
+
+
+def render_all_node_data(node: dict[str, Any]) -> None:
+    props = all_node_data(node)
+    if not props:
+        st.caption("No properties on this node.")
+        return
+
+    keys = sorted(props.keys())
+    tabs = st.tabs(keys)
+    for tab, key in zip(tabs, keys):
+        with tab:
+            val = props[key]
+            if val in (None, "", {}, []):
+                st.caption("(empty)")
+            else:
+                render_nested(None, val)
 
 def is_flat_dict(obj: Any) -> bool:
     return isinstance(obj, dict) and all(
@@ -795,7 +831,7 @@ def render_child_branch(indexes, node):
     cname = node_name(node)
     children = indexes["children_by_parent"].get(node["id"], [])
 
-    value_count = len(flatten_blocks(attr_blocks(node.get("props"), active_filter_block())))
+    value_count = all_node_value_count(node)
 
     title = cname
     if children:
@@ -1219,57 +1255,72 @@ tab_path, tab_table, tab_compare, tab_bom = st.tabs(
 
 # --- TAB 1 ---
 
+# --- TAB 1 ---
 with tab_path:
     path_nodes = [
         indexes["nodes_by_id"][nid]
         for nid in st.session_state.path_ids
         if nid in indexes["nodes_by_id"]
     ]
-    path_labels = [node_name(pn) for pn in path_nodes]
 
-    if path_labels:
-        st.subheader(" › ".join(path_labels))
+    if path_nodes:
+        st.subheader(" › ".join(node_name(pn) for pn in path_nodes))
     else:
         st.subheader("Explore")
 
     if st.session_state.compare_materials:
         st.caption("view compared materials.")
 
-    #
-    for i, pn in enumerate(path_nodes):
-        is_current = i == len(path_nodes) - 1
-        name = node_name(pn)
-
-        value_count = len(flatten_blocks(attr_blocks(pn.get("props"), active_filter_block())))
-        all_children = indexes["children_by_parent"].get(pn["id"], [])
-
-        title = name
-        if all_children:
-            title += f" ({len(all_children)} submaterials)"
-        if value_count:
-            title += f" [{value_count} values]"
-
-        with st.expander(title, expanded=is_current):
-            render_node_blocks(pn)
-            
     current = path_nodes[-1]
-    children = visible_submaterials(indexes, current["id"])
+    current_name = node_name(current)
+    current_id = current["id"]
 
-    block = active_filter_block()
-    if block:
-        st.markdown(f"**Submaterials** — showing nodes with `{block}`")
+    all_children = indexes["children_by_parent"].get(current_id, [])
+    down_children = visible_submaterials(indexes, current_id)
+    siblings = siblings_of(indexes, current_id)
+    parent_id = indexes["parent_by_id"].get(current_id)
+    value_count = all_node_value_count(current)
+
+    if value_count:
+        st.markdown(f"**{current_name}** — {value_count} values")
+    elif all_children:
+        st.markdown(f"**{current_name}** — category ({len(all_children)} submaterials)")
     else:
-        st.markdown("**Submaterials**")
+        st.markdown(f"**{current_name}**")
 
-    if not children:
-        if st.session_state.filter_attr_block == "(no filter)":
-            st.caption("No submaterials here.")
+    render_all_node_data(current)
+
+    if parent_id and parent_id in indexes["nodes_by_id"]:
+        parent = indexes["nodes_by_id"][parent_id]
+        st.markdown("**Up**")
+        if st.button(
+            f"↑ {node_name(parent)}",
+            key=f"nav_up_{parent_id}",
+            use_container_width=True,
+        ):
+            st.session_state.path_ids = st.session_state.path_ids[:-1]
+            st.rerun()
+
+    if siblings:
+        st.markdown("**Same level**")
+        for sib in siblings:
+            render_child_branch(indexes, sib)
+
+    if down_children:
+        block = active_filter_block()
+        if block:
+            st.markdown(f"**Down — submaterials** (with `{block}`)")
         else:
-            st.caption(f"No submaterials with `{st.session_state.filter_attr_block}` under this node.")
-    else:
-        for child in children:
+            st.markdown("**Down — submaterials**")
+        for child in down_children:
             render_child_branch(indexes, child)
-# --- TAB 2 ---
+    elif all_children:
+        st.caption("Materials exist in this category but none match the current sidebar filter.")
+    else:
+        st.caption("No materials in this group.")
+
+
+# --- TAB 2 ---------------------------------------------------------------------------------
 with tab_table:
     st.subheader("All materials under this node — every extracted value")
     all_rows: list[dict[str, str]] = []
