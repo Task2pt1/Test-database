@@ -636,60 +636,55 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
     cmp_key = f"cmp_tree_{node_id}"
     bom_key = f"bill_tree_{node_id}"
 
-    #
-    def render_row() -> None:
-    with st.container(border=True):
-        RIGHT_RAIL = 0.22          # fixed 22% for Compare + BOM — never changes
-        indent = tree_indent_fraction(depth)
-
-        # --- ROW: name on the left, controls locked to the right ---
-        if indent > 0:
-            _, name_col, ctrl_col = st.columns(
-                [indent, 1.0 - indent - RIGHT_RAIL, RIGHT_RAIL],
-                gap="small",
-            )
+    def toggle_expand() -> None:
+        if node_id in st.session_state.expanded_material_ids:
+            st.session_state.expanded_material_ids.discard(node_id)
         else:
-            name_col, ctrl_col = st.columns(
-                [1.0 - RIGHT_RAIL, RIGHT_RAIL],
-                gap="small",
-            )
+            st.session_state.expanded_material_ids.add(node_id)
 
-        with name_col:
-            if st.button(
-                label,
-                key=f"tree_toggle_{node_id}",
-                use_container_width=True,
-            ):
-                if node_id in st.session_state.expanded_material_ids:
-                    st.session_state.expanded_material_ids.remove(node_id)
-                else:
-                    st.session_state.expanded_material_ids.add(node_id)
-                st.rerun()
+    def render_row() -> None:
+        with st.container(border=True):
+            RIGHT_RAIL = 0.22
+            indent = tree_indent_fraction(depth)
 
-        with ctrl_col:
-            cmp_col, bom_col = st.columns(2, gap="small")
-            with cmp_col:
-                st.checkbox(
-                    "Compare",
-                    value=is_material_in_compare(node_id),
-                    key=cmp_key,
-                    on_change=on_compare_toggle,
-                    args=(node_id, cname, cmp_key),
+            if indent > 0:
+                _, name_col, ctrl_col = st.columns(
+                    [indent, 1.0 - indent - RIGHT_RAIL, RIGHT_RAIL],
+                    gap="small",
                 )
-            with bom_col:
-                st.checkbox(
-                    "BOM",
-                    value=is_in_bill(node_id),
-                    key=bom_key,
-                    on_change=on_bill_toggle,
-                    args=(node_id, bom_key),
+            else:
+                name_col, ctrl_col = st.columns(
+                    [1.0 - RIGHT_RAIL, RIGHT_RAIL],
+                    gap="small",
                 )
 
-        # --- ATTRIBUTES: inside the same box, directly under the row ---
-        if is_open:
-            st.markdown('<div class="material-attrs">', unsafe_allow_html=True)
-            render_node_all_categories(node)
-            st.markdown("</div>", unsafe_allow_html=True)
+            with name_col:
+                st.button(
+                    label,
+                    key=f"tree_toggle_{node_id}",
+                    type="tertiary",
+                    use_container_width=True,
+                    on_click=toggle_expand,
+                )
+
+            with ctrl_col:
+                cmp_col, bom_col = st.columns(2, gap="small")
+                with cmp_col:
+                    st.checkbox(
+                        "Compare",
+                        value=is_material_in_compare(node_id),
+                        key=cmp_key,
+                        on_change=on_compare_toggle,
+                        args=(node_id, cname, cmp_key),
+                    )
+                with bom_col:
+                    st.checkbox(
+                        "BOM",
+                        value=is_in_bill(node_id),
+                        key=bom_key,
+                        on_change=on_bill_toggle,
+                        args=(node_id, bom_key),
+                    )
 
     def render_open_body() -> None:
         if blocks:
@@ -702,7 +697,7 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
 
     render_row()
     if is_open:
-        render_node_all_categories(node)
+        render_open_body()
 
 def is_flat_dict(obj: Any) -> bool:
     return isinstance(obj, dict) and all(
