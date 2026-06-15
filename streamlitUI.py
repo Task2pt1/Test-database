@@ -790,12 +790,9 @@ def render_child_branch(indexes, node):
     name_col, cmp_col, bom_col = st.columns([7, 1.2, 1.5], vertical_alignment="center")
 
     with name_col:
-        with st.expander(title, expanded=False):
-            if st.button("Open here", key=f"open_{node['id']}"):
-                st.session_state.path_ids = path_to_node(indexes, node["id"])
-                st.rerun()
-
-            render_node_blocks(node)
+        if st.button(title, key=f"nav_{node['id']}", use_container_width=True):
+            st.session_state.path_ids = path_to_node(indexes, node["id"])
+            st.rerun()
 
     with cmp_col:
         st.checkbox(
