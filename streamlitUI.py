@@ -36,20 +36,21 @@ META_KEYS = {"name", "id", "code", "database", "vector", "placement"}
 
 FILTER_ATTR_OPTIONS = ["(no filter)",  *ATTR_BLOCKS]
 
+
 # =============================================================================
 # SECTION 2 — CSS
 # =============================================================================
 st.markdown(
     """
     <style>
-    /* --- App title --- */
+    /* BLOCK A — App title */
     .app-title {
         font-size: 1.75rem;
         font-weight: 600;
         margin-bottom: 0.5rem;
     }
 
-    /* --- Compare tab table --- */
+    /* BLOCK B — Compare tab table */
     .compare-scroll {
         overflow-x: auto;
         max-width: 100%;
@@ -91,29 +92,36 @@ st.markdown(
         min-width: 180px;
     }
 
-    /* --- Sidebar --- */
+    /* BLOCK C — Sidebar */
     section[data-testid="stSidebar"] div[data-testid="column"] .stButton > button {
         padding: 0.1rem 0.35rem !important;
         min-height: 1.35rem !important;
         font-size: 0.8rem !important;
     }
 
-    /* --- Main tree: compact rows --- */
+    /* BLOCK D — Material row boxes (slim) */
     [data-testid="stMain"] [data-testid="stVerticalBlock"] {
-        gap: 0.15rem !important;
+        gap: 0.06rem !important;
     }
 
     [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] {
-        padding: 0.05rem 0.35rem !important;
-        margin-bottom: 0.08rem !important;
+        padding: 0 0.35rem !important;
+        margin-bottom: 0.05rem !important;
+        min-height: 0 !important;
+    }
+
+    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] > div {
+        gap: 0 !important;
+        min-height: 0 !important;
     }
 
     [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] button[kind="tertiary"] {
         padding: 0 !important;
+        margin: 0 !important;
         min-height: 0 !important;
-        height: auto !important;
-        line-height: 1.2 !important;
-        font-size: 0.9rem !important;
+        height: 1.1rem !important;
+        line-height: 1.1rem !important;
+        font-size: 0.84rem !important;
         background: transparent !important;
         border: none !important;
         box-shadow: none !important;
@@ -125,33 +133,42 @@ st.markdown(
         text-decoration: underline;
     }
 
-    [data-testid="stMain"] div[data-testid="stHorizontalBlock"] .stCheckbox label {
-        font-size: 0.8rem;
-        gap: 0.15rem;
+    /* BLOCK E — Compare / BOM (right side, no clip) */
+    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] .stCheckbox {
+        min-height: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
     }
 
-    [data-testid="stMain"] div[data-testid="stHorizontalBlock"] .stCheckbox label p {
-        font-size: 0.8rem;
-        margin: 0;
-        white-space: nowrap;
+    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] .stCheckbox label {
+        min-height: 0 !important;
+        font-size: 0.76rem !important;
+        gap: 0.15rem !important;
     }
 
-    /* --- Attributes under open nodes --- */
+    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] .stCheckbox label p {
+        font-size: 0.76rem !important;
+        margin: 0 !important;
+        white-space: nowrap !important;
+    }
+
+    /* BLOCK F — Attribute headers + plain text */
     .category-section {
-        margin: 0.25rem 0 0.05rem 0;
-        font-size: 0.76rem;
+        margin: 0.2rem 0 0.02rem 0;
+        font-size: 0.75rem;
         font-weight: 600;
         opacity: 0.7;
     }
 
     .attr-simple {
-        margin: 0 0 0.2rem 0.4rem;
-        font-size: 0.88rem;
-        line-height: 1.3;
+        margin: 0 0 0.15rem 0.35rem;
+        font-size: 0.84rem;
+        line-height: 1.25;
     }
 
+    /* BLOCK G — Data tables (keep shading + ⋮ menu) */
     [data-testid="stMain"] div[data-testid="stDataFrame"] {
-        margin-bottom: 0.2rem !important;
+        margin-bottom: 0.15rem !important;
     }
 
     [data-testid="stMain"] [data-testid="stDataFrame"],
@@ -494,82 +511,90 @@ def siblings_of(indexes: dict[str, Any], node_id: str) -> list[dict[str, Any]]:
     sibs.sort(key=node_name)
     return sibs
 
-def collect_table_sections(prefix: str, obj: Any) -> list[tuple[str, list[dict[str, Any]]]]:
-  sections: list[tuple[str, list[dict[str, Any]]]] = []
+def collect_table_sections(
+    prefix: str, obj: Any
+) -> list[tuple[str, str | list[dict[str, Any]]]]:
+    sections: list[tuple[str, str | list[dict[str, Any]]]] = []
 
-  if obj in (None, "", {}, []):
+    if obj in (None, "", {}, []):
+        return sections
+
+    if isinstance(obj, dict):
+        if is_flat_dict(obj):
+            sections.append((prefix, [obj]))
+        else:
+            for k, v in obj.items():
+                child = f"{prefix} → {k}" if prefix else k
+                sections.extend(collect_table_sections(child, v))
+        return sections
+
+    if isinstance(obj, list):
+        if obj and all(isinstance(x, dict) for x in obj):
+            sections.append((prefix, obj))
+        elif obj and all(not isinstance(x, (dict, list)) for x in obj):
+            sections.append((prefix, ", ".join(str(x) for x in obj)))
+        else:
+            for i, item in enumerate(obj):
+                sections.extend(collect_table_sections(f"{prefix}[{i}]", item))
+        return sections
+
+    sections.append((prefix, str(obj)))
     return sections
-
-  if isinstance(obj, dict):
-    if is_flat_dict(obj):
-      sections.append((prefix, [obj]))
-    else:
-      for k, v in obj.items():
-        child = f"{prefix} → {k}" if prefix else k
-        sections.extend(collect_table_sections(child, v))
-    return sections
-
-  if isinstance(obj, list):
-    if obj and all(isinstance(x, dict) for x in obj):
-      sections.append((prefix, obj))
-    elif obj and all(not isinstance(x, (dict, list)) for x in obj):
-      sections.append((prefix, [{"value": ", ".join(str(x) for x in obj)}]))
-    else:
-      for i, item in enumerate(obj):
-        sections.extend(collect_table_sections(f"{prefix}[{i}]", item))
-    return sections
-
-  sections.append((prefix, [{"value": str(obj)}]))
-  return sections
-
-
+    
 def render_node_all_categories(node: dict[str, Any]) -> None:
     blocks = attr_blocks(node.get("props"), filter_block=None)
     if not blocks:
         return
+
     for block_name, block_val in blocks.items():
         sections = collect_table_sections(block_name, block_val)
         if not sections:
-            st.markdown(f'<p class="category-section">{block_name}</p>', unsafe_allow_html=True)
             continue
-        for title, rows in sections:
+
+        for title, content in sections:
             st.markdown(f'<p class="category-section">{title}</p>', unsafe_allow_html=True)
-            df = pd.DataFrame([{k: cell_to_display(v) for k, v in row.items()} for row in rows])
-            st.dataframe(
-                df,
-                use_container_width=True,
-                hide_index=True,
-                height=min(36 + 32 * len(df), 280),
-            )
+
+            if isinstance(content, str):
+                st.markdown(f'<p class="attr-simple">{content}</p>', unsafe_allow_html=True)
+            else:
+                df = pd.DataFrame(
+                    [{k: cell_to_display(v) for k, v in row.items()} for row in content]
+                )
+                st.dataframe(
+                    df,
+                    use_container_width=True,
+                    hide_index=True,
+                    height=min(34 + 30 * len(df), 240),
+                )
+                
 def tree_indent_fraction(depth: int) -> float:
-    return min(depth * 0.05, 0.30)
+    return min(depth * 0.055, 0.33)
+
+
 def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], depth: int = 0) -> None:
     node_id = node["id"]
     if not tree_node_visible(indexes, node_id):
         return
+
     cname = node_name(node)
     children = indexes["children_by_parent"].get(node_id, [])
     blocks = attr_blocks(node.get("props"), filter_block=None)
     value_count = len(flatten_blocks(blocks)) if blocks else 0
     is_open = node_id in st.session_state.expanded_material_ids
+
     title = cname
     if children:
         title += f" ({len(children)} submaterials)"
     if value_count:
         title += f" [{value_count} values]"
+
     label = ("▾ " if is_open else "▸ ") + title
     cmp_key = f"cmp_tree_{node_id}"
     bom_key = f"bill_tree_{node_id}"
-    actions_w = 0.22
+
     def render_row() -> None:
-        wrapper_class = "mat-open" if is_open else "mat-closed"
-        st.markdown(f'<div class="{wrapper_class}">', unsafe_allow_html=True)
         with st.container(border=True):
-            name_col, actions_col = st.columns(
-                [1.0 - actions_w, actions_w],
-                gap="small",
-                vertical_alignment="center",
-            )
+            name_col, actions_col = st.columns([0.64, 0.36], gap="small")
             with name_col:
                 if st.button(label, key=f"mat_{node_id}", type="tertiary", use_container_width=True):
                     if is_open:
@@ -578,8 +603,8 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                         st.session_state.expanded_material_ids.append(node_id)
                     st.rerun()
             with actions_col:
-                cmp_col, bom_col = st.columns(2, gap="small", vertical_alignment="center")
-                with cmp_col:
+                c1, c2 = st.columns([1.2, 0.8], gap="small")
+                with c1:
                     st.checkbox(
                         "Compare",
                         value=is_material_in_compare(node_id),
@@ -587,7 +612,7 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                         on_change=on_compare_toggle,
                         args=(node_id, cname, cmp_key),
                     )
-                with bom_col:
+                with c2:
                     st.checkbox(
                         "BOM",
                         value=is_in_bill(node_id),
@@ -595,26 +620,30 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                         on_change=on_bill_toggle,
                         args=(node_id, bom_key),
                     )
-        st.markdown("</div>", unsafe_allow_html=True)
+
     def render_open_body() -> None:
         if blocks:
-            attr_pad = tree_indent_fraction(depth + 1)
-            _, attr_col = st.columns([attr_pad, 1.0 - attr_pad], gap="small")
-            with attr_col:
+            pad = tree_indent_fraction(depth + 1)
+            _, body = st.columns([pad, 1.0 - pad], gap="small")
+            with body:
                 render_node_all_categories(node)
         for child in children:
             render_material_tree_node(indexes, child, depth + 1)
+
     if depth == 0:
         render_row()
         if is_open:
             render_open_body()
     else:
         pad = tree_indent_fraction(depth)
-        _, main_col = st.columns([pad, 1.0 - pad], gap="small")
-        with main_col:
+        _, main = st.columns([pad, 1.0 - pad], gap="small")
+        with main:
             render_row()
             if is_open:
                 render_open_body()
+
+
+
 def is_flat_dict(obj: Any) -> bool:
     return isinstance(obj, dict) and all(
         not isinstance(v, (dict, list)) for v in obj.values()
