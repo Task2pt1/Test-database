@@ -1195,7 +1195,9 @@ if "show_compare_view" not in st.session_state:
     st.session_state.show_compare_view = False
     
 if "expanded_material_ids" not in st.session_state:
-    st.session_state.expanded_material_ids = []
+    st.session_state.expanded_material_ids = set()
+elif isinstance(st.session_state.expanded_material_ids, list):
+    st.session_state.expanded_material_ids = set(st.session_state.expanded_material_ids)
 # =============================================================================
 # SECTION 11 — APP STARTUP
 # =============================================================================
