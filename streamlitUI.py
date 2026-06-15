@@ -36,19 +36,20 @@ META_KEYS = {"name", "id", "code", "database", "vector", "placement"}
 
 FILTER_ATTR_OPTIONS = ["(no filter)",  *ATTR_BLOCKS]
 
-
 # =============================================================================
 # SECTION 2 — CSS
 # =============================================================================
 st.markdown(
     """
     <style>
+    /* --- App title --- */
     .app-title {
         font-size: 1.75rem;
         font-weight: 600;
         margin-bottom: 0.5rem;
     }
 
+    /* --- Compare tab table --- */
     .compare-scroll {
         overflow-x: auto;
         max-width: 100%;
@@ -90,23 +91,29 @@ st.markdown(
         min-width: 180px;
     }
 
-    /* Sidebar remove buttons */
+    /* --- Sidebar --- */
     section[data-testid="stSidebar"] div[data-testid="column"] .stButton > button {
         padding: 0.1rem 0.35rem !important;
         min-height: 1.35rem !important;
         font-size: 0.8rem !important;
     }
 
-    /* Compact material rows — main area only */
+    /* --- Main tree: compact rows --- */
+    [data-testid="stMain"] [data-testid="stVerticalBlock"] {
+        gap: 0.15rem !important;
+    }
+
     [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] {
-        padding: 0.08rem 0.4rem !important;
-        margin-bottom: 0.15rem !important;
+        padding: 0.05rem 0.35rem !important;
+        margin-bottom: 0.08rem !important;
     }
 
     [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] button[kind="tertiary"] {
         padding: 0 !important;
-        min-height: 1.25rem !important;
-        font-size: 0.92rem !important;
+        min-height: 0 !important;
+        height: auto !important;
+        line-height: 1.2 !important;
+        font-size: 0.9rem !important;
         background: transparent !important;
         border: none !important;
         box-shadow: none !important;
@@ -118,17 +125,6 @@ st.markdown(
         text-decoration: underline;
     }
 
-    /* Open material row */
-    [data-testid="stMain"] .mat-open div[data-testid="stVerticalBlockBorderWrapper"] {
-        border-color: rgba(231, 76, 60, 0.55) !important;
-        background: rgba(231, 76, 60, 0.07) !important;
-    }
-
-    [data-testid="stMain"] .mat-open button[kind="tertiary"] {
-        font-weight: 700 !important;
-    }
-
-    /* Compare / BOM on material rows */
     [data-testid="stMain"] div[data-testid="stHorizontalBlock"] .stCheckbox label {
         font-size: 0.8rem;
         gap: 0.15rem;
@@ -140,21 +136,24 @@ st.markdown(
         white-space: nowrap;
     }
 
-    /* Attribute section headers — compact, distinct from row */
+    /* --- Attributes under open nodes --- */
     .category-section {
-        margin: 0.35rem 0 0.05rem 0;
-        font-size: 0.78rem;
+        margin: 0.25rem 0 0.05rem 0;
+        font-size: 0.76rem;
         font-weight: 600;
-        opacity: 0.75;
-        border-bottom: 1px solid rgba(250, 250, 250, 0.08);
-        padding-bottom: 0.05rem;
+        opacity: 0.7;
+    }
+
+    .attr-simple {
+        margin: 0 0 0.2rem 0.4rem;
+        font-size: 0.88rem;
+        line-height: 1.3;
     }
 
     [data-testid="stMain"] div[data-testid="stDataFrame"] {
         margin-bottom: 0.2rem !important;
     }
 
-    /* Highlight / copy cell text */
     [data-testid="stMain"] [data-testid="stDataFrame"],
     [data-testid="stMain"] [data-testid="stDataFrame"] * {
         user-select: text !important;
