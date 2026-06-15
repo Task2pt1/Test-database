@@ -583,8 +583,14 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
 
     cname = node_name(node)
     children = indexes["children_by_parent"].get(node_id, [])
-    blocks = attr_blocks(node.get("props"), filter_block=None)
-    value_count = len(flatten_blocks(blocks)) if blocks else 0
+    #
+    props = parse_props(node.get("props"))
+
+    value_count = len(
+        flatten_blocks(
+            {k: v for k, v in props.items() if k not in META_KEYS}
+        )
+    )
     is_open = node_id in st.session_state.expanded_material_ids
 
     title = cname
