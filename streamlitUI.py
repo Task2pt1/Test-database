@@ -985,44 +985,44 @@ st.markdown(
     '<p class="app-title">Material Ontology Explorer</p>',
     unsafe_allow_html=True,
 )
-    # roots dropdown
-    roots = get_root_nodes()
-    root_map = {r["id"]: r["label"] for r in roots}
-    browse_options = [""] + list(root_map.keys())
+# roots dropdown
+roots = get_root_nodes()
+root_map = {r["id"]: r["label"] for r in roots}
+browse_options = [""] + list(root_map.keys())
 
-    current_root_id = (
-        st.session_state.path_ids[0]
-        if st.session_state.path_ids
-        else ""
-    )
+current_root_id = (
+    st.session_state.path_ids[0]
+    if st.session_state.path_ids
+    else ""
+)
 
-    browse_pick = st.selectbox(
-        "Top level",
-        options=browse_options,
-        index=browse_options.index(current_root_id)
-        if current_root_id in browse_options
-        else 0,
-        format_func=lambda rid: "— select —" if rid == "" else root_map[rid],
-    )
+browse_pick = st.selectbox(
+    "Top level",
+    options=browse_options,
+    index=browse_options.index(current_root_id)
+    if current_root_id in browse_options
+    else 0,
+    format_func=lambda rid: "— select —" if rid == "" else root_map[rid],
+)
 
-    if browse_pick != current_root_id:
-        if browse_pick:
-            st.session_state.has_searched = True
-            st.session_state.path_ids = [browse_pick]
-            st.session_state.root_indexes = None
-            st.session_state.nav_target_id = None
-            st.session_state.search_feedback = ""
-            st.session_state.search_results = []
-        else:
-            st.session_state.has_searched = False
-            st.session_state.path_ids = []
-            st.session_state.root_indexes = None
-            st.session_state.nav_target_id = None
-            st.session_state.search_feedback = ""
-            st.session_state.search_results = []
+if browse_pick != current_root_id:
+    if browse_pick:
+        st.session_state.has_searched = True
+        st.session_state.path_ids = [browse_pick]
+        st.session_state.root_indexes = None
+        st.session_state.nav_target_id = None
+        st.session_state.search_feedback = ""
+        st.session_state.search_results = []
+    else:
+        st.session_state.has_searched = False
+        st.session_state.path_ids = []
+        st.session_state.root_indexes = None
+        st.session_state.nav_target_id = None
+        st.session_state.search_feedback = ""
+        st.session_state.search_results = []
 
-        st.rerun()
-        #end dropdown
+    st.rerun()
+    #end dropdown
 # =============================================================================
 # SECTION 12 — SIDEBAR
 # =============================================================================
