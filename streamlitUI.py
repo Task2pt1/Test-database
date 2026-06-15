@@ -156,6 +156,34 @@ st.markdown(
         border-radius: 8px;
         padding: 4px;
     }
+        .tree-depth-0 { margin-left: 0px; }
+    .tree-depth-1 { margin-left: 18px; }
+    .tree-depth-2 { margin-left: 36px; }
+    .tree-depth-3 { margin-left: 54px; }
+    .tree-depth-4 { margin-left: 72px; }
+    .tree-depth-5 { margin-left: 90px; }
+
+    .tree-row button {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0.1rem 0 !important;
+        margin: 0 !important;
+        font-weight: 500 !important;
+        text-align: left !important;
+        justify-content: flex-start !important;
+        color: inherit !important;
+        min-height: 0 !important;
+    }
+
+    .tree-row button:hover {
+        text-decoration: underline;
+        background: transparent !important;
+    }
+
+    .tree-row-open button {
+        font-weight: 700 !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -873,11 +901,27 @@ def on_nav_child(child_id: str) -> None:
         st.session_state.path_ids = path_to_node(indexes, child_id)
         st.rerun()
 
-def render_child_branch(indexes, node):
-    cname = node_name(node)
-    children = indexes["children_by_parent"].get(node["id"], [])
+def tree_node_visible(indexes: dict[str, Any], node_id: str) -> bool:
+    if st.session_state.filter_attr_block == "(no filter)":
+        return True
+    node = indexes["nodes_by_id"].get(node_id)
+    if node and node_passes_submaterial_filter(node):
+        return True
+    return any(
+        tree_node_visible(indexes, child["id"])
+        for child in indexes["children_by_parent"].get(node_id, [])
+    )
 
-    value_count = len(flatten_blocks(attr_blocks(node.get("props"), active_filter_block())))
+
+def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], depth: int = 0) -> None:
+    node_id = node["id"]
+    if not tree_node_visible(indexes, node_id):
+        return
+
+    cname = node_name(node)
+    children = indexes["children_by_parent"].get(node_id, [])
+    value_count = len(flatten_blocks(attr_blocks(node.get("props"), filter_block=None)))
+    is_open = node_id in st.session_state.expanded_material_ids
 
     title = cname
     if children:
@@ -885,14 +929,21 @@ def render_child_branch(indexes, node):
     if value_count:
         title += f" [{value_count} values]"
 
-    cmp_key = f"cmp_child_{node['id']}"
-    bom_key = f"bill_child_{node['id']}"
+    cmp_key = f"cmp_tree_{node_id}"
+    bom_key = f"bill_tree_{node_id}"
+    depth_class = f"tree-depth-{min(depth, 5)}"
+    open_class = "tree-row-open" if is_open else "tree-row"
+
+    st.markdown(f'<div class="{open_class} {depth_class}">', unsafe_allow_html=True)
 
     name_col, actions_col = st.columns([7.2, 2.3], vertical_alignment="center")
 
     with name_col:
-        if st.button(title, key=f"nav_{node['id']}", use_container_width=True):
-            st.session_state.path_ids = path_to_node(indexes, node["id"])
+        if st.button(title, key=f"mat_{node_id}", use_container_width=True):
+            if is_open:
+                st.session_state.expanded_material_ids.remove(node_id)
+            else:
+                st.session_state.expanded_material_ids.append(node_id)
             st.rerun()
 
     with actions_col:
@@ -900,21 +951,34 @@ def render_child_branch(indexes, node):
         with cmp_col:
             st.checkbox(
                 "Compare",
-                value=is_material_in_compare(node["id"]),
+                value=is_material_in_compare(node_id),
                 key=cmp_key,
                 on_change=on_compare_toggle,
-                args=(node["id"], cname, cmp_key),
+                args=(node_id, cname, cmp_key),
             )
         with bom_col:
             st.checkbox(
                 "BOM",
-                value=is_in_bill(node["id"]),
+                value=is_in_bill(node_id),
                 key=bom_key,
                 on_change=on_bill_toggle,
-                args=(node["id"], bom_key),
+                args=(node_id, bom_key),
             )
-        
-            
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    if is_open:
+        st.markdown(
+            f"<div style='margin-left:{(depth + 1) * 18}px; margin-bottom:0.75rem'>",
+            unsafe_allow_html=True,
+        )
+        render_node_all_categories(node)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    for child in children:
+        render_material_tree_node(indexes, child, depth + 1)
+
+
 # =============================================================================
 # SECTION 8 — BOM HELPERS
 # =============================================================================
@@ -1081,6 +1145,9 @@ if "compare_materials" not in st.session_state:
 
 if "show_compare_view" not in st.session_state:
     st.session_state.show_compare_view = False
+    
+if "expanded_material_ids" not in st.session_state:
+    st.session_state.expanded_material_ids = []
 # =============================================================================
 # SECTION 11 — APP STARTUP
 # =============================================================================
@@ -1297,52 +1364,15 @@ tab_path, tab_compare, tab_bom = st.tabs(
     ["Path + explore", "Compare", "Export BOM"])
 
 # --- TAB 1 ---
+
 with tab_path:
-    path_nodes = [
-        indexes["nodes_by_id"][nid]
-        for nid in st.session_state.path_ids
-        if nid in indexes["nodes_by_id"]
-    ]
-
-    current = path_nodes[-1]
-    current_id = current["id"]
-    parent_id = indexes["parent_by_id"].get(current_id)
-
-    for i, pn in enumerate(path_nodes[:-1]):
-        if st.button(
-            node_name(pn),
-            key=f"ancestor_{pn['id']}_{i}",
-            use_container_width=False,
-        ):
-            st.session_state.path_ids = st.session_state.path_ids[: i + 1]
-            st.rerun()
-
-    st.markdown(f"**{node_name(current)}**")
+    root_id = st.session_state.path_ids[0]
+    root_node = indexes["nodes_by_id"][root_id]
 
     if st.session_state.compare_materials:
         st.caption("view compared materials.")
 
-    render_node_all_categories(current)
-
-    if parent_id:
-        peers = indexes["children_by_parent"].get(parent_id, [])
-        other_peers = [p for p in peers if p["id"] != current_id]
-        if other_peers:
-            st.markdown("**Same level**")
-            for peer in other_peers:
-                render_child_branch(indexes, peer)
-
-    children = visible_submaterials(indexes, current_id)
-    all_child_count = len(indexes["children_by_parent"].get(current_id, []))
-
-    if children:
-        st.markdown("**Below**")
-        for child in children:
-            render_child_branch(indexes, child)
-    elif all_child_count and st.session_state.filter_attr_block != "(no filter)":
-        st.caption("Materials exist but none match the sidebar filter.")
-
-
+    render_material_tree_node(indexes, root_node, depth=0)
 
 # --- TAB 2 ---
 with tab_compare:
