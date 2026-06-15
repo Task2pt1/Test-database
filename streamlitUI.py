@@ -1027,23 +1027,23 @@ if browse_pick != current_root_id:
 # SECTION 12 — SIDEBAR
 # =============================================================================
 with st.sidebar:
-    with st.sidebar:
-    if st.button("Clear", use_container_width=True):
-        st.session_state.has_searched = False
-        st.session_state.path_ids = []
-        st.session_state.root_indexes = None
-        st.session_state.nav_target_id = None
-        st.session_state.search_query = ""
-        st.session_state.search_feedback = ""
-        st.session_state.search_results = []
-        st.session_state.filter_attr_block = "(no filter)"
-        st.session_state.compare_parts = []
-        st.session_state.compare_materials = []
-        st.session_state.show_compare_view = False
-        st.session_state.bom = {}
-        st.rerun()
 
-    st.header("Navigation")
+if st.button("Clear", use_container_width=True):
+    st.session_state.has_searched = False
+    st.session_state.path_ids = []
+    st.session_state.root_indexes = None
+    st.session_state.nav_target_id = None
+    st.session_state.search_query = ""
+    st.session_state.search_feedback = ""
+    st.session_state.search_results = []
+    st.session_state.filter_attr_block = "(no filter)"
+    st.session_state.compare_parts = []
+    st.session_state.compare_materials = []
+    st.session_state.show_compare_view = False
+    st.session_state.bom = {}
+    st.rerun()
+
+st.header("Navigation")
 
 
     with st.form("global_material_search", clear_on_submit=False):
