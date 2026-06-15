@@ -567,25 +567,10 @@ def render_node_all_categories(node: dict[str, Any]) -> None:
 
     for block_name, block_val in blocks.items():
 
-        st.subheader(block_name)
+        st.markdown(f"## {block_name}")
 
-        rows = flatten_blocks(
-            {block_name: block_val},
-            combine_value_unit=True,
-        )
+        render_nested(None, block_val)
 
-        if not rows:
-            continue
-
-        df = pd.DataFrame(rows)
-
-        st.dataframe(
-            df,
-            use_container_width=True,
-            hide_index=True,
-            height=min(50 + 35 * len(df), 800),
-        )
-            
 
 def tree_indent_fraction(depth: int) -> float:
     return min(depth * 0.055, 0.33)
@@ -677,38 +662,42 @@ def cell_to_display(v: Any) -> Any:
 
 
 def render_nested(key: str | None, obj: Any, level: int = 0) -> None:
+
     if obj in (None, "", {}, []):
         return
 
+    indent = "&nbsp;" * (level * 6)
+
     if isinstance(obj, dict):
-        if is_flat_dict(obj):
-            if key:
-                st.markdown(f"**{key}**")
-            st.dataframe(pd.DataFrame([{k: cell_to_display(v) for k, v in obj.items()}]),
-                         use_container_width=True, hide_index=True)
-            return
-        if key:
-            st.markdown(f"**{key}**")
+
         for k, v in obj.items():
-            render_nested(k, v, level + 1)
+
+            if isinstance(v, (dict, list)):
+                st.markdown(
+                    f"{indent}<b>{k}</b>",
+                    unsafe_allow_html=True,
+                )
+                render_nested(None, v, level + 1)
+
+            else:
+                st.markdown(
+                    f"{indent}{k}: {v}",
+                    unsafe_allow_html=True,
+                )
+
         return
 
     if isinstance(obj, list):
-        if key:
-            st.markdown(f"**{key}**")
-        if obj and all(isinstance(x, dict) for x in obj):
-            st.dataframe(
-                pd.DataFrame([{k: cell_to_display(v) for k, v in x.items()} for x in obj]),
-                use_container_width=True,
-                hide_index=True,
-                height=min(38 + 35 * len(obj), 420),
-            )
-        else:
-            st.write(", ".join(str(x) for x in obj))
+
+        for item in obj:
+            render_nested(None, item, level)
+
         return
 
-    if key:
-        st.write(f"**{key}:** {obj}")
+    st.markdown(
+        f"{indent}{obj}",
+        unsafe_allow_html=True,
+    )
 
 
 def render_node_blocks(node: dict[str, Any]) -> None:
