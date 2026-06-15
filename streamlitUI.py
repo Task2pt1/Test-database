@@ -787,7 +787,7 @@ def render_child_branch(indexes, node):
     cmp_key = f"cmp_child_{node['id']}"
     bom_key = f"bill_child_{node['id']}"
 
-    name_col, cmp_col, bom_col = st.columns([7, 1.2, 1.5], vertical_alignment="center")
+    name_col, cmp_col, bom_col = st.columns([6, 1.5, 1.5], vertical_alignment="center")
 
     with name_col:
         if st.button(title, key=f"nav_{node['id']}", use_container_width=True):
@@ -804,18 +804,24 @@ def render_child_branch(indexes, node):
         )
 
     with bom_col:
-        st.markdown(
-            '<span title="Add to bill of materials" style="cursor: help;">BOM</span>',
-            unsafe_allow_html=True,
-        )
-        st.checkbox(
-            "BOM",
-            value=is_in_bill(node["id"]),
-            key=bom_key,
-            on_change=on_bill_toggle,
-            args=(node["id"], bom_key),
-            label_visibility="collapsed",
-        )
+        bom_box_col, bom_label_col = st.columns([0.4, 0.6], vertical_alignment="center")
+        with bom_box_col:
+            st.checkbox(
+                "BOM",
+                value=is_in_bill(node["id"]),
+                key=bom_key,
+                on_change=on_bill_toggle,
+                args=(node["id"], bom_key),
+                label_visibility="collapsed",
+            )
+        with bom_label_col:
+            st.markdown(
+                '<span title="Add to bill of materials" style="cursor: help;">BOM</span>',
+                unsafe_allow_html=True,
+            )
+
+    for child in children:
+        render_child_branch(indexes, child)
             
 # =============================================================================
 # SECTION 8 — BOM HELPERS
@@ -1124,18 +1130,23 @@ with st.sidebar:
         if apply_filter_auto_dive(indexes):
             st.rerun()
         render_clickable_path(st.session_state.path_ids, indexes)
-
+    #
     if st.session_state.compare_materials:
         st.divider()
         st.markdown("**Compare List**")
+        compare_by_cat: dict[str, list[dict[str, str]]] = defaultdict(list)
         for m in st.session_state.compare_materials:
-            name_col, reject_col = st.columns([6, 1])
-            with name_col:
-                st.caption(f"• {m['name']}")
-            with reject_col:
-                if st.button("✕", key=f"reject_compare_{m['id']}"):
-                    remove_material_from_compare(m["id"])
-                    st.rerun()
+            compare_by_cat[m.get("category", "Unknown")].append(m)
+        for cat in sorted(compare_by_cat.keys()):
+            st.markdown(f"**{cat}**")
+            for m in compare_by_cat[cat]:
+                name_col, reject_col = st.columns([6, 1])
+                with name_col:
+                    st.caption(f"• {m['name']}")
+                with reject_col:
+                    if st.button("✕", key=f"reject_compare_{m['id']}"):
+                        remove_material_from_compare(m["id"])
+                        st.rerun()
         if st.button("Clear compare list", use_container_width=True):
             st.session_state.compare_materials = []
             st.session_state.compare_parts = []
