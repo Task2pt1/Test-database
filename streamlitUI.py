@@ -40,7 +40,6 @@ FILTER_ATTR_OPTIONS = ["(no filter)",  *ATTR_BLOCKS]
 # =============================================================================
 # SECTION 2 — CSS
 # =============================================================================
-
 st.markdown(
     """
     <style>
@@ -124,7 +123,6 @@ st.markdown(
         width: 180px;
     }
 
-    /* Sidebar: compact remove (×) buttons */
     section[data-testid="stSidebar"] div[data-testid="column"] .stButton > button {
         padding: 0.1rem 0.35rem !important;
         min-height: 1.35rem !important;
@@ -132,7 +130,6 @@ st.markdown(
         line-height: 1 !important;
     }
 
-    /* Main submaterial row: tighter Compare / BOM checkboxes */
     div[data-testid="stHorizontalBlock"] .stCheckbox label {
         font-size: 0.82rem;
         gap: 0.2rem;
@@ -142,28 +139,10 @@ st.markdown(
         font-size: 0.82rem;
         margin: 0;
     }
-        .category-section {
-        margin: 1rem 0 0.5rem 0;
-        font-size: 1rem;
-        font-weight: 600;
-    }
-    .hscroll-wrap {
-        overflow-x: auto;
-        overflow-y: hidden;
-        max-width: 100%;
-        margin-bottom: 1.25rem;
-        border: 1px solid rgba(250, 250, 250, 0.08);
-        border-radius: 8px;
-        padding: 4px;
-    }
-        .tree-depth-0 { margin-left: 0px; }
-    .tree-depth-1 { margin-left: 18px; }
-    .tree-depth-2 { margin-left: 36px; }
-    .tree-depth-3 { margin-left: 54px; }
-    .tree-depth-4 { margin-left: 72px; }
-    .tree-depth-5 { margin-left: 90px; }
 
-    .tree-row button {
+    .tree-row button,
+    .mat-row button,
+    .mat-row-open button {
         background: transparent !important;
         border: none !important;
         box-shadow: none !important;
@@ -176,19 +155,65 @@ st.markdown(
         min-height: 0 !important;
     }
 
-    .tree-row button:hover {
+    .tree-row button:hover,
+    .mat-row button:hover,
+    .mat-row-open button:hover {
         text-decoration: underline;
         background: transparent !important;
     }
 
-    .tree-row-open button {
+    .mat-row-open button {
         font-weight: 700 !important;
+    }
+
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        margin-bottom: 0.3rem !important;
+    }
+
+    .mat-row-open div[data-testid="stVerticalBlockBorderWrapper"] {
+        border-color: rgba(231, 76, 60, 0.55) !important;
+        background: rgba(231, 76, 60, 0.08) !important;
+    }
+
+    .mat-attrs-panel [data-testid="stVerticalBlock"] {
+        gap: 0.2rem !important;         #gap between blocks in open panel 
+    }
+
+    .mat-attrs-panel div[data-testid="stVerticalBlockBorderWrapper"] {
+        margin-bottom: 0.35rem !important;
+        padding: 0.15rem 0.4rem !important;
+        border-left: 3px solid rgba(231, 76, 60, 0.7) !important;
+    }
+
+    .category-section {
+        margin: 0.15rem 0 0.05rem 0 !important;        #title spacing
+        font-size: 0.8rem !important;
+        font-weight: 600;
+        opacity: 0.85;
+    }
+
+    .hscroll-wrap {
+        overflow-x: auto;
+        overflow-y: hidden;
+        max-width: 100%;
+        margin-bottom: 0.25rem !important;     #space after each table
+        padding: 0 !important;
+    }
+
+    div[data-testid="stDataFrame"] {
+        margin-bottom: 0.15rem !important;   #extra under dataframe
+    }
+
+    [data-testid="stMain"] [data-testid="stDataFrame"],
+    [data-testid="stMain"] [data-testid="stDataFrame"] * {
+        user-select: text !important;
+        -webkit-user-select: text !important;
+        cursor: text;
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
-
 # =============================================================================
 # SECTION 3 — NEO4J CONNECTION
 # =============================================================================
@@ -548,23 +573,28 @@ def collect_table_sections(prefix: str, obj: Any) -> list[tuple[str, list[dict[s
 
 
 def render_node_all_categories(node: dict[str, Any]) -> None:
-  # ALWAYS all categories on current node — sidebar filter does NOT apply here
-  blocks = attr_blocks(node.get("props"), filter_block=None)
+    blocks = attr_blocks(node.get("props"), filter_block=None)
 
-  for block_name, block_val in blocks.items():
-    sections = collect_table_sections(block_name, block_val)
+    for block_name, block_val in blocks.items():
+        sections = collect_table_sections(block_name, block_val)
 
-    if not sections:
-      st.markdown(f'<p class="category-section">{block_name}</p>', unsafe_allow_html=True)
-      st.caption("(empty)")
-      continue
+        if not sections:
+            st.markdown(f'<p class="category-section">{block_name}</p>', unsafe_allow_html=True)
+            continue
 
-    for title, rows in sections:
-      st.markdown(f'<p class="category-section">{title}</p>', unsafe_allow_html=True)
-      df = pd.DataFrame([{k: cell_to_display(v) for k, v in row.items()} for row in rows])
-      st.markdown('<div class="hscroll-wrap">', unsafe_allow_html=True)
-      st.dataframe(df, use_container_width=True, hide_index=True)
-      st.markdown("</div>", unsafe_allow_html=True)
+        for title, rows in sections:
+            st.markdown(f'<p class="category-section">{title}</p>', unsafe_allow_html=True)
+            df = pd.DataFrame([{k: cell_to_display(v) for k, v in row.items()} for row in rows])
+            st.markdown('<div class="hscroll-wrap">', unsafe_allow_html=True)
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+                height=min(38 + 35 * len(df), 320),
+            )
+            #Shorter tables: lower the numbers, e.g. min(30 + 28 * len(df), 200)
+            #Taller tables: raise them, e.g. min(45 + 40 * len(df), 500)
+            st.markdown("</div>", unsafe_allow_html=True)
 
 
 def is_flat_dict(obj: Any) -> bool:
@@ -933,7 +963,7 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
     bom_key = f"bill_tree_{node_id}"
 
     if depth:
-        st.markdown(f"<div style='margin-left:{depth * 16}px'>", unsafe_allow_html=True)
+        st.markdown(f"<div style='margin-left:{depth * 20}px'>", unsafe_allow_html=True)
 
     row_class = "mat-row-open" if is_open else "mat-row"
     st.markdown(f'<div class="{row_class}">', unsafe_allow_html=True)
@@ -969,7 +999,10 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
     st.markdown("</div>", unsafe_allow_html=True)
 
     if is_open:
-        st.markdown('<div class="mat-attrs-panel">', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="mat-attrs-panel" style="margin-left:{(depth + 1) * 20}px">',
+            unsafe_allow_html=True,
+        )
         with st.container(border=True):
             render_node_all_categories(node)
         st.markdown("</div>", unsafe_allow_html=True)
