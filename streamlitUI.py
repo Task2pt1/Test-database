@@ -784,12 +784,23 @@ def render_child_branch(indexes, node):
     if value_count:
         title += f" [{value_count} values]"
 
-    with st.expander(title, expanded=False):
-        if st.button("Open here", key=f"open_{node['id']}"):
-            st.session_state.path_ids = path_to_node(indexes, node["id"])
-            st.rerun()
+    cmp_key = f"cmp_child_{node['id']}"
+    bom_key = f"bill_child_{node['id']}"
 
-        cmp_key = f"cmp_child_{node['id']}"
+    name_col, cmp_col, bom_col = st.columns([6, 1, 2], vertical_alignment="center")
+
+    with name_col:
+        with st.expander(title, expanded=False):
+            if st.button("Open here", key=f"open_{node['id']}"):
+                st.session_state.path_ids = path_to_node(indexes, node["id"])
+                st.rerun()
+
+            render_node_blocks(node)
+
+            for child in children:
+                render_child_branch(indexes, child)
+
+    with cmp_col:
         st.checkbox(
             "Compare",
             value=is_material_in_compare(node["id"]),
@@ -798,7 +809,7 @@ def render_child_branch(indexes, node):
             args=(node["id"], cname, cmp_key),
         )
 
-        bom_key = f"bill_child_{node['id']}"
+    with bom_col:
         st.checkbox(
             "Add to BOM",
             value=is_in_bill(node["id"]),
@@ -806,11 +817,6 @@ def render_child_branch(indexes, node):
             on_change=on_bill_toggle,
             args=(node["id"], bom_key),
         )
-
-        render_node_blocks(node)
-
-        for child in children:
-            render_child_branch(indexes, child)
             
 # =============================================================================
 # SECTION 8 — BOM HELPERS
