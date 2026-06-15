@@ -1246,22 +1246,49 @@ subtree = get_subtree_rows_from_indexes(current_id, indexes)
 # =============================================================================
 tab_path, tab_table, tab_compare, tab_bom = st.tabs(
     ["Path + explore", "All values (table)", "Compare", "Export BOM"])
+            
+# --- TAB 1 ---
+with tab_path:
+    path_nodes = [
+        indexes["nodes_by_id"][nid]
+        for nid in st.session_state.path_ids
+        if nid in indexes["nodes_by_id"]
+    ]
 
-def render_node_blocks_by_category(node: dict[str, Any]) -> None:
-    blocks = attr_blocks(node.get("props"), active_filter_block())
-    if not blocks:
-        block = active_filter_block()
-        st.caption(
-            f"No `{block}` data on this node." if block
-            else "No attribute values on this node."
-        )
-        return
+    if not path_nodes:
+        st.subheader("Explore")
+    else:
+        crumb_cols = st.columns(len(path_nodes))
+        for i, pn in enumerate(path_nodes):
+            with crumb_cols[i]:
+                label = node_name(pn)
+                if i == len(path_nodes) - 1:
+                    st.markdown(f"**{label}**")
+                elif st.button(label, key=f"path_crumb_{pn['id']}_{i}", use_container_width=True):
+                    st.session_state.path_ids = st.session_state.path_ids[: i + 1]
+                    st.rerun()
 
-    tabs = st.tabs(list(blocks.keys()))
-    for tab, (group_name, group_val) in zip(tabs, blocks.items()):
-        with tab:
-            render_nested(None, group_val)
+    if st.session_state.compare_materials:
+        st.caption("view compared materials.")
 
+    current = path_nodes[-1]
+    value_count = len(flatten_blocks(attr_blocks(current.get("props"), active_filter_block())))
+    child_count = len(indexes["children_by_parent"].get(current["id"], []))
+
+    if value_count:
+        st.caption(f"{node_name(current)} — {value_count} values")
+    elif child_count:
+        st.caption(f"{node_name(current)} — {child_count} submaterials")
+
+    render_node_blocks_by_category(current)
+
+    children = visible_submaterials(indexes, current["id"])
+    if children:
+        for child in children:
+            render_child_branch(indexes, child)
+    elif child_count and st.session_state.filter_attr_block != "(no filter)":
+        st.caption("No submaterials match the current filter.")
+        
 # --- TAB 2 ---------------------------------------------------------------------------------
 with tab_table:
     st.subheader("All materials under this node — every extracted value")
