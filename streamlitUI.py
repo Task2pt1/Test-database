@@ -40,6 +40,7 @@ FILTER_ATTR_OPTIONS = ["(no filter)",  *ATTR_BLOCKS]
 # =============================================================================
 # SECTION 2 — CSS
 # =============================================================================
+
 st.markdown(
     """
     <style>
@@ -140,6 +141,20 @@ st.markdown(
     div[data-testid="stHorizontalBlock"] .stCheckbox label p {
         font-size: 0.82rem;
         margin: 0;
+    }
+        .category-section {
+        margin: 1rem 0 0.5rem 0;
+        font-size: 1rem;
+        font-weight: 600;
+    }
+    .hscroll-wrap {
+        overflow-x: auto;
+        overflow-y: hidden;
+        max-width: 100%;
+        margin-bottom: 1.25rem;
+        border: 1px solid rgba(250, 250, 250, 0.08);
+        border-radius: 8px;
+        padding: 4px;
     }
     </style>
     """,
@@ -475,25 +490,63 @@ def siblings_of(indexes: dict[str, Any], node_id: str) -> list[dict[str, Any]]:
     sibs.sort(key=node_name)
     return sibs
 
-def render_node_blocks_by_category(node: dict[str, Any]) -> None:
-    blocks = attr_blocks(node.get("props"), active_filter_block())
-    if not blocks:
-        block = active_filter_block()
-        st.caption(
-            f"No `{block}` data on this node." if block
-            else "No attribute values on this node.")
-        return
+def collect_table_sections(prefix: str, obj: Any) -> list[tuple[str, list[dict[str, Any]]]]:
+  sections: list[tuple[str, list[dict[str, Any]]]] = []
 
-    tabs = st.tabs(list(blocks.keys()))
-    for tab, (group_name, group_val) in zip(tabs, blocks.items()):
-        with tab:
-            render_nested(None, group_val)
+  if obj in (None, "", {}, []):
+    return sections
+
+  if isinstance(obj, dict):
+    if is_flat_dict(obj):
+      sections.append((prefix, [obj]))
+    else:
+      for k, v in obj.items():
+        child = f"{prefix} → {k}" if prefix else k
+        sections.extend(collect_table_sections(child, v))
+    return sections
+
+  if isinstance(obj, list):
+    if obj and all(isinstance(x, dict) for x in obj):
+      sections.append((prefix, obj))
+    elif obj and all(not isinstance(x, (dict, list)) for x in obj):
+      sections.append((prefix, [{"value": ", ".join(str(x) for x in obj)}]))
+    else:
+      for i, item in enumerate(obj):
+        sections.extend(collect_table_sections(f"{prefix}[{i}]", item))
+    return sections
+
+  sections.append((prefix, [{"value": str(obj)}]))
+  return sections
+
+
+def render_node_all_categories(node: dict[str, Any]) -> None:
+  # ALWAYS all categories on current node — sidebar filter does NOT apply here
+  blocks = attr_blocks(node.get("props"), filter_block=None)
+
+  if not blocks:
+    st.caption("No attribute values on this node.")
+    return
+
+  for block_name, block_val in blocks.items():
+    sections = collect_table_sections(block_name, block_val)
+
+    if not sections:
+      st.markdown(f'<p class="category-section">{block_name}</p>', unsafe_allow_html=True)
+      st.caption("(empty)")
+      continue
+
+    for title, rows in sections:
+      st.markdown(f'<p class="category-section">{title}</p>', unsafe_allow_html=True)
+      df = pd.DataFrame([{k: cell_to_display(v) for k, v in row.items()} for row in rows])
+      st.markdown('<div class="hscroll-wrap">', unsafe_allow_html=True)
+      st.dataframe(df, use_container_width=True, hide_index=True)
+      st.markdown("</div>", unsafe_allow_html=True)
+
 
 def is_flat_dict(obj: Any) -> bool:
     return isinstance(obj, dict) and all(
         not isinstance(v, (dict, list)) for v in obj.values()
     )
-
 
 def cell_to_display(v: Any) -> Any:
     if isinstance(v, (dict, list)):
@@ -1244,9 +1297,9 @@ subtree = get_subtree_rows_from_indexes(current_id, indexes)
 # =============================================================================
 # SECTION 14 — MAIN TABS
 # =============================================================================
-tab_path, tab_table, tab_compare, tab_bom = st.tabs(
-    ["Path + explore", "All values (table)", "Compare", "Export BOM"])
-            
+tab_path, tab_compare, tab_bom = st.tabs(
+    ["Path + explore", "Compare", "Export BOM"])
+
 # --- TAB 1 ---
 with tab_path:
     path_nodes = [
@@ -1255,94 +1308,47 @@ with tab_path:
         if nid in indexes["nodes_by_id"]
     ]
 
-    if not path_nodes:
-        st.subheader("Explore")
-    else:
-        crumb_cols = st.columns(len(path_nodes))
-        for i, pn in enumerate(path_nodes):
-            with crumb_cols[i]:
-                label = node_name(pn)
-                if i == len(path_nodes) - 1:
-                    st.markdown(f"**{label}**")
-                elif st.button(label, key=f"path_crumb_{pn['id']}_{i}", use_container_width=True):
-                    st.session_state.path_ids = st.session_state.path_ids[: i + 1]
-                    st.rerun()
+    current = path_nodes[-1]
+    current_id = current["id"]
+    parent_id = indexes["parent_by_id"].get(current_id)
+
+    for i, pn in enumerate(path_nodes[:-1]):
+        if st.button(
+            node_name(pn),
+            key=f"ancestor_{pn['id']}_{i}",
+            use_container_width=False,
+        ):
+            st.session_state.path_ids = st.session_state.path_ids[: i + 1]
+            st.rerun()
+
+    st.markdown(f"**{node_name(current)}**")
 
     if st.session_state.compare_materials:
         st.caption("view compared materials.")
 
-    current = path_nodes[-1]
-    value_count = len(flatten_blocks(attr_blocks(current.get("props"), active_filter_block())))
-    child_count = len(indexes["children_by_parent"].get(current["id"], []))
+    render_node_all_categories(current)
 
-    if value_count:
-        st.caption(f"{node_name(current)} — {value_count} values")
-    elif child_count:
-        st.caption(f"{node_name(current)} — {child_count} submaterials")
+    if parent_id:
+        peers = indexes["children_by_parent"].get(parent_id, [])
+        other_peers = [p for p in peers if p["id"] != current_id]
+        if other_peers:
+            st.markdown("**Same level**")
+            for peer in other_peers:
+                render_child_branch(indexes, peer)
 
-    render_node_blocks_by_category(current)
+    children = visible_submaterials(indexes, current_id)
+    all_child_count = len(indexes["children_by_parent"].get(current_id, []))
 
-    children = visible_submaterials(indexes, current["id"])
     if children:
+        st.markdown("**Below**")
         for child in children:
             render_child_branch(indexes, child)
-    elif child_count and st.session_state.filter_attr_block != "(no filter)":
-        st.caption("No submaterials match the current filter.")
-        
-# --- TAB 2 ---------------------------------------------------------------------------------
-with tab_table:
-    st.subheader("All materials under this node — every extracted value")
-    all_rows: list[dict[str, str]] = []
+    elif all_child_count and st.session_state.filter_attr_block != "(no filter)":
+        st.caption("Materials exist but none match the sidebar filter.")
 
-    for row in subtree:
-        p = parse_props(row["props"])
-        mat_name = p.get("name") or row["label"]
-        depth = row["depth"]
-        for attr_row in flatten_blocks(attr_blocks(row["props"])):
-            all_rows.append(
-                {
-                    "depth": depth,
-                    "material": mat_name,
-                    "attribute": attr_row["attribute"],
-                    "value": attr_row["value"],
-                    "_id": row["id"],
-                }
-            )
 
-    if not all_rows:
-        st.info("No attribute values found in this subtree.")
-    else:
-        df = pd.DataFrame(all_rows)
 
-        pick = st.data_editor(
-            df.assign(compare=False),
-            column_config={"compare": st.column_config.CheckboxColumn("Compare")},
-            disabled=[c for c in df.columns if c != "compare"],
-            hide_index=True,
-            use_container_width=True,
-            key="table_compare_pick",
-        )
-
-        if st.button("Add checked rows to compare"):
-            for i, row in pick.iterrows():
-                if not row.get("compare"):
-                    continue
-                add_part_to_compare(
-                    df.loc[i, "_id"],
-                    row["material"],
-                    row["attribute"],
-                    row["value"],
-                )
-            st.rerun()
-
-        st.download_button(
-            "Download extracted values (CSV)",
-            df.drop(columns=["_id"]).to_csv(index=False),
-            file_name=f"{node_name(node)}_extract.csv",
-            mime="text/csv")
-
-# --- TAB 3 ---
-# --- TAB 3 ---
+# --- TAB 2 ---
 with tab_compare:
     st.subheader("Compare materials")
 
@@ -1398,7 +1404,9 @@ with tab_compare:
             st.info("No comparable attributes found for the selected materials.")
         else:
             render_parts_compare(compare_parts)
-# --- TAB 4 ---
+
+
+# --- TAB 3 ---
 with tab_bom:
     st.subheader("Export BOM")
 
