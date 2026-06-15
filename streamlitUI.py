@@ -674,10 +674,10 @@ def is_material_in_compare(material_id: str) -> bool:
     return any(m["id"] == material_id for m in st.session_state.compare_materials)
 
 
-def add_material_to_compare(material_id: str, material_name: str) -> None:
+def add_material_to_compare(material_id: str, material_name: str, category: str) -> None:
     if not is_material_in_compare(material_id):
         st.session_state.compare_materials.append(
-            {"id": material_id, "name": material_name}
+            {"id": material_id, "name": material_name, "category": category}
         )
 
 
@@ -688,13 +688,14 @@ def remove_material_from_compare(material_id: str) -> None:
 
 def on_compare_toggle(material_id: str, material_name: str, widget_key: str) -> None:
     if st.session_state[widget_key]:
-        add_material_to_compare(material_id, material_name)
+        indexes = st.session_state.get("root_indexes")
+        category = indexes["root_name"] if indexes else "Unknown"
+        add_material_to_compare(material_id, material_name, category)
         st.session_state.show_compare_view = True
     else:
         remove_material_from_compare(material_id)
         if not st.session_state.compare_materials:
             st.session_state.show_compare_view = False
-
 
 
 
@@ -1321,6 +1322,7 @@ with tab_table:
             mime="text/csv")
 
 # --- TAB 3 ---
+# --- TAB 3 ---
 with tab_compare:
     st.subheader("Compare materials")
 
@@ -1339,7 +1341,11 @@ with tab_compare:
             if branch["populated_direct_children"]:
                 if st.button("Compare direct submaterials"):
                     st.session_state.compare_materials = [
-                        {"id": child["id"], "name": node_name(child)}
+                        {
+                            "id": child["id"],
+                            "name": node_name(child),
+                            "category": indexes["root_name"],
+                        }
                         for child in branch["populated_direct_children"]
                     ]
                     st.rerun()
@@ -1372,7 +1378,6 @@ with tab_compare:
             st.info("No comparable attributes found for the selected materials.")
         else:
             render_parts_compare(compare_parts)
-            
 # --- TAB 4 ---
 with tab_bom:
     st.subheader("Export BOM")
