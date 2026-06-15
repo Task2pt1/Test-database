@@ -49,32 +49,8 @@ st.markdown(
         margin-bottom: 0.5rem;
     }
 
-    .crumbs {
-        font-size: 0.95rem;
-        line-height: 1.6;
-        margin: 0.25rem 0 0.75rem 0;
-        word-wrap: break-word;
-    }
-
-    .crumbs a {
-        color: inherit;
-        text-decoration: none;
-        font-weight: 500;
-        margin-right: 0.15rem;
-    }
-
-    .crumbs a:hover {
-        text-decoration: underline;
-    }
-
-    .crumb-sep {
-        opacity: 0.6;
-        margin: 0 0.25rem;
-    }
-
     .compare-scroll {
         overflow-x: auto;
-        overflow-y: auto;
         max-width: 100%;
         border: 1px solid rgba(250, 250, 250, 0.10);
         border-radius: 12px;
@@ -94,137 +70,102 @@ st.markdown(
         padding: 8px 10px;
         text-align: left;
         vertical-align: top;
-        white-space: normal;
-        word-break: break-word;
-        overflow-wrap: anywhere;
     }
 
     .compare-table th {
         position: sticky;
         top: 0;
-        z-index: 3;
         background: #1f2430;
     }
 
     .compare-table .sticky-attr {
         position: sticky;
         left: 0;
-        z-index: 2;
         background: #111827;
         min-width: 260px;
-        max-width: 260px;
-        width: 260px;
         font-weight: 600;
     }
 
     .compare-table .material-col {
         min-width: 180px;
-        max-width: 180px;
-        width: 180px;
     }
 
+    /* Sidebar remove buttons */
     section[data-testid="stSidebar"] div[data-testid="column"] .stButton > button {
         padding: 0.1rem 0.35rem !important;
         min-height: 1.35rem !important;
         font-size: 0.8rem !important;
-        line-height: 1 !important;
     }
 
-    div[data-testid="stHorizontalBlock"] .stCheckbox label {
-        font-size: 0.82rem;
-        gap: 0.2rem;
+    /* Compact material rows — main area only */
+    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] {
+        padding: 0.08rem 0.4rem !important;
+        margin-bottom: 0.15rem !important;
     }
 
-    div[data-testid="stHorizontalBlock"] .stCheckbox label p {
-        font-size: 0.82rem;
-        margin: 0;
-    }
-
-    .tree-row button,
-    .mat-row button,
-    .mat-row-open button {
+    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] button[kind="tertiary"] {
+        padding: 0 !important;
+        min-height: 1.25rem !important;
+        font-size: 0.92rem !important;
         background: transparent !important;
         border: none !important;
         box-shadow: none !important;
-        padding: 0.1rem 0 !important;
-        margin: 0 !important;
-        font-weight: 500 !important;
         text-align: left !important;
         justify-content: flex-start !important;
-        color: inherit !important;
-        min-height: 0 !important;
     }
 
-    .tree-row button:hover,
-    .mat-row button:hover,
-    .mat-row-open button:hover {
+    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] button[kind="tertiary"]:hover {
         text-decoration: underline;
-        background: transparent !important;
     }
 
-    .mat-row-open button {
+    /* Open material row */
+    [data-testid="stMain"] .mat-open div[data-testid="stVerticalBlockBorderWrapper"] {
+        border-color: rgba(231, 76, 60, 0.55) !important;
+        background: rgba(231, 76, 60, 0.07) !important;
+    }
+
+    [data-testid="stMain"] .mat-open button[kind="tertiary"] {
         font-weight: 700 !important;
     }
 
-    div[data-testid="stVerticalBlockBorderWrapper"] {
-        margin-bottom: 0.3rem !important;
+    /* Compare / BOM on material rows */
+    [data-testid="stMain"] div[data-testid="stHorizontalBlock"] .stCheckbox label {
+        font-size: 0.8rem;
+        gap: 0.15rem;
     }
 
-    .mat-row-open div[data-testid="stVerticalBlockBorderWrapper"] {
-        border-color: rgba(231, 76, 60, 0.55) !important;
-        background: rgba(231, 76, 60, 0.08) !important;
+    [data-testid="stMain"] div[data-testid="stHorizontalBlock"] .stCheckbox label p {
+        font-size: 0.8rem;
+        margin: 0;
+        white-space: nowrap;
     }
 
-    .mat-attrs-panel [data-testid="stVerticalBlock"] {
-        gap: 0.2rem !important;        
-    }
-
-    .mat-attrs-panel div[data-testid="stVerticalBlockBorderWrapper"] {
-        margin-bottom: 0.35rem !important;
-        padding: 0.15rem 0.4rem !important;
-        border-left: 3px solid rgba(231, 76, 60, 0.7) !important;
-    }
-
+    /* Attribute section headers — compact, distinct from row */
     .category-section {
-        margin: 0.15rem 0 0.05rem 0 !important;       
-        font-size: 0.8rem !important;
+        margin: 0.35rem 0 0.05rem 0;
+        font-size: 0.78rem;
         font-weight: 600;
-        opacity: 0.85;
+        opacity: 0.75;
+        border-bottom: 1px solid rgba(250, 250, 250, 0.08);
+        padding-bottom: 0.05rem;
     }
 
-    .hscroll-wrap {
-        overflow-x: auto;
-        overflow-y: hidden;
-        max-width: 100%;
-        margin-bottom: 0.25rem !important;     
-        padding: 0 !important;
+    [data-testid="stMain"] div[data-testid="stDataFrame"] {
+        margin-bottom: 0.2rem !important;
     }
 
-    div[data-testid="stDataFrame"] {
-        margin-bottom: 0.15rem !important;   
-    }
-
+    /* Highlight / copy cell text */
     [data-testid="stMain"] [data-testid="stDataFrame"],
     [data-testid="stMain"] [data-testid="stDataFrame"] * {
         user-select: text !important;
         -webkit-user-select: text !important;
         cursor: text;
     }
-    div[data-testid="stVerticalBlockBorderWrapper"] {
-        padding: 0.08rem 0.35rem !important;
-        margin-bottom: 0.12rem !important;
-    }
-    div[data-testid="stVerticalBlockBorderWrapper"] button[kind="tertiary"] {
-        padding: 0.05rem 0 !important;
-        min-height: 1.4rem !important;
-    }
-    div[data-testid="stHorizontalBlock"] .stCheckbox label p {
-        white-space: nowrap;
-    }
     </style>
     """,
     unsafe_allow_html=True,
 )
+
 # =============================================================================
 # SECTION 3 — NEO4J CONNECTION
 # =============================================================================
@@ -587,13 +528,11 @@ def render_node_all_categories(node: dict[str, Any]) -> None:
     blocks = attr_blocks(node.get("props"), filter_block=None)
     if not blocks:
         return
-
     for block_name, block_val in blocks.items():
         sections = collect_table_sections(block_name, block_val)
         if not sections:
             st.markdown(f'<p class="category-section">{block_name}</p>', unsafe_allow_html=True)
             continue
-
         for title, rows in sections:
             st.markdown(f'<p class="category-section">{title}</p>', unsafe_allow_html=True)
             df = pd.DataFrame([{k: cell_to_display(v) for k, v in row.items()} for row in rows])
@@ -601,9 +540,82 @@ def render_node_all_categories(node: dict[str, Any]) -> None:
                 df,
                 use_container_width=True,
                 hide_index=True,
-                height=min(38 + 35 * len(df), 320),
+                height=min(36 + 32 * len(df), 280),
             )
-
+def tree_indent_fraction(depth: int) -> float:
+    return min(depth * 0.05, 0.30)
+def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], depth: int = 0) -> None:
+    node_id = node["id"]
+    if not tree_node_visible(indexes, node_id):
+        return
+    cname = node_name(node)
+    children = indexes["children_by_parent"].get(node_id, [])
+    blocks = attr_blocks(node.get("props"), filter_block=None)
+    value_count = len(flatten_blocks(blocks)) if blocks else 0
+    is_open = node_id in st.session_state.expanded_material_ids
+    title = cname
+    if children:
+        title += f" ({len(children)} submaterials)"
+    if value_count:
+        title += f" [{value_count} values]"
+    label = ("▾ " if is_open else "▸ ") + title
+    cmp_key = f"cmp_tree_{node_id}"
+    bom_key = f"bill_tree_{node_id}"
+    actions_w = 0.22
+    def render_row() -> None:
+        wrapper_class = "mat-open" if is_open else "mat-closed"
+        st.markdown(f'<div class="{wrapper_class}">', unsafe_allow_html=True)
+        with st.container(border=True):
+            name_col, actions_col = st.columns(
+                [1.0 - actions_w, actions_w],
+                gap="small",
+                vertical_alignment="center",
+            )
+            with name_col:
+                if st.button(label, key=f"mat_{node_id}", type="tertiary", use_container_width=True):
+                    if is_open:
+                        st.session_state.expanded_material_ids.remove(node_id)
+                    else:
+                        st.session_state.expanded_material_ids.append(node_id)
+                    st.rerun()
+            with actions_col:
+                cmp_col, bom_col = st.columns(2, gap="small", vertical_alignment="center")
+                with cmp_col:
+                    st.checkbox(
+                        "Compare",
+                        value=is_material_in_compare(node_id),
+                        key=cmp_key,
+                        on_change=on_compare_toggle,
+                        args=(node_id, cname, cmp_key),
+                    )
+                with bom_col:
+                    st.checkbox(
+                        "BOM",
+                        value=is_in_bill(node_id),
+                        key=bom_key,
+                        on_change=on_bill_toggle,
+                        args=(node_id, bom_key),
+                    )
+        st.markdown("</div>", unsafe_allow_html=True)
+    def render_open_body() -> None:
+        if blocks:
+            attr_pad = tree_indent_fraction(depth + 1)
+            _, attr_col = st.columns([attr_pad, 1.0 - attr_pad], gap="small")
+            with attr_col:
+                render_node_all_categories(node)
+        for child in children:
+            render_material_tree_node(indexes, child, depth + 1)
+    if depth == 0:
+        render_row()
+        if is_open:
+            render_open_body()
+    else:
+        pad = tree_indent_fraction(depth)
+        _, main_col = st.columns([pad, 1.0 - pad], gap="small")
+        with main_col:
+            render_row()
+            if is_open:
+                render_open_body()
 def is_flat_dict(obj: Any) -> bool:
     return isinstance(obj, dict) and all(
         not isinstance(v, (dict, list)) for v in obj.values()
@@ -949,94 +961,8 @@ def tree_node_visible(indexes: dict[str, Any], node_id: str) -> bool:
         for child in indexes["children_by_parent"].get(node_id, [])
     )
 
-def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], depth: int = 0) -> None:
-    node_id = node["id"]
-    if not tree_node_visible(indexes, node_id):
-        return
 
-    cname = node_name(node)
-    children = indexes["children_by_parent"].get(node_id, [])
-    blocks = attr_blocks(node.get("props"), filter_block=None)
-    value_count = len(flatten_blocks(blocks)) if blocks else 0
-    is_open = node_id in st.session_state.expanded_material_ids
-
-    title = cname
-    if children:
-        title += f" ({len(children)} submaterials)"
-    if value_count:
-        title += f" [{value_count} values]"
-
-    label = ("▾ " if is_open else "▸ ") + title
-    cmp_key = f"cmp_tree_{node_id}"
-    bom_key = f"bill_tree_{node_id}"
-
-    indent_w = min(depth * 0.025, 0.15)
-    actions_w = 0.24
-
-    def render_name_and_actions() -> None:
-        if depth > 0:
-            _, name_col, actions_col = st.columns(
-                [indent_w, 1.0 - indent_w - actions_w, actions_w],
-                gap="small",
-                vertical_alignment="center",
-            )
-        else:
-            name_col, actions_col = st.columns(
-                [1.0 - actions_w, actions_w],
-                gap="small",
-                vertical_alignment="center",
-            )
-
-        with name_col:
-            if st.button(label, key=f"mat_{node_id}", type="tertiary", use_container_width=True):
-                if is_open:
-                    st.session_state.expanded_material_ids.remove(node_id)
-                else:
-                    st.session_state.expanded_material_ids.append(node_id)
-                st.rerun()
-
-        with actions_col:
-            cmp_col, bom_col = st.columns(2, gap="small", vertical_alignment="center")
-            with cmp_col:
-                st.checkbox(
-                    "Compare",
-                    value=is_material_in_compare(node_id),
-                    key=cmp_key,
-                    on_change=on_compare_toggle,
-                    args=(node_id, cname, cmp_key),
-                )
-            with bom_col:
-                st.checkbox(
-                    "BOM",
-                    value=is_in_bill(node_id),
-                    key=bom_key,
-                    on_change=on_bill_toggle,
-                    args=(node_id, bom_key),
-                )
-
-    with st.container(border=True):
-        if is_open:
-            accent, body = st.columns([0.008, 0.992], gap="small")
-            with accent:
-                st.markdown(
-                    '<div style="background:rgba(231,76,60,0.75); min-height:1.6rem; border-radius:2px;"></div>',
-                    unsafe_allow_html=True,
-                )
-            with body:
-                render_name_and_actions()
-        else:
-            render_name_and_actions()
-
-    if is_open:
-        if blocks:
-            attr_indent = min((depth + 1) * 0.025, 0.18)
-            _, attr_main = st.columns([attr_indent, 1 - attr_indent], gap="small")
-            with attr_main:
-                with st.container(border=True):
-                    render_node_all_categories(node)
-
-        for child in children:
-            render_material_tree_node(indexes, child, depth + 1)
+           
 
 # =============================================================================
 # SECTION 8 — BOM HELPERS
