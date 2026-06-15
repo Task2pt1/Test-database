@@ -578,28 +578,35 @@ def tree_indent_fraction(depth: int) -> float:
 
 def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], depth: int = 0) -> None:
     node_id = node["id"]
+
     if not tree_node_visible(indexes, node_id):
         return
 
     cname = node_name(node)
     children = indexes["children_by_parent"].get(node_id, [])
-    #
+
     props = parse_props(node.get("props"))
 
-    value_count = len(
-        flatten_blocks(
-            {k: v for k, v in props.items() if k not in META_KEYS}
-        )
-    )
+    blocks = {
+        k: v
+        for k, v in props.items()
+        if k not in META_KEYS and v not in (None, "", {}, [])
+    }
+
+    value_count = len(flatten_blocks(blocks)) if blocks else 0
+
     is_open = node_id in st.session_state.expanded_material_ids
 
     title = cname
+
     if children:
         title += f" ({len(children)} submaterials)"
+
     if value_count:
         title += f" [{value_count} values]"
 
     label = ("▾ " if is_open else "▸ ") + title
+
     cmp_key = f"cmp_tree_{node_id}"
     bom_key = f"bill_tree_{node_id}"
 
@@ -610,8 +617,10 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
             st.session_state.expanded_material_ids.add(node_id)
 
     with st.container(border=True):
+
         RIGHT = 0.28
         indent = tree_indent_fraction(depth)
+
         if indent > 0:
             _, name_col, ctrl_col = st.columns(
                 [indent, 1.0 - indent - RIGHT, RIGHT],
@@ -624,6 +633,7 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                 gap="small",
                 vertical_alignment="center",
             )
+
         with name_col:
             st.button(
                 label,
@@ -632,8 +642,10 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                 use_container_width=True,
                 on_click=toggle_expand,
             )
+
         with ctrl_col:
             c1, c2 = st.columns(2, gap="small")
+
             with c1:
                 st.checkbox(
                     "Compare",
@@ -642,6 +654,7 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                     on_change=on_compare_toggle,
                     args=(node_id, cname, cmp_key),
                 )
+
             with c2:
                 st.checkbox(
                     "BOM",
@@ -652,18 +665,24 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                 )
 
     if is_open:
-        props = parse_props(node.get("props"))
 
-    blocks = {
-        k: v
-        for k, v in props.items()
-        if k not in META_KEYS and v not in (None, "", {}, [])
-    }
-    
-    value_count = len(flatten_blocks(blocks)) if blocks else 0
+        if blocks:
+            attr_indent = tree_indent_fraction(depth) + 0.02
+
+            _, body = st.columns(
+                [attr_indent, 1.0 - attr_indent],
+                gap="small",
+            )
+
+            with body:
+                render_node_all_categories(node)
 
         for child in children:
-            render_material_tree_node(indexes, child, depth + 1)
+            render_material_tree_node(
+                indexes,
+                child,
+                depth + 1,
+            )
 
 def cell_to_display(v: Any) -> Any:
     if isinstance(v, (dict, list)):
