@@ -561,43 +561,30 @@ def collect_table_sections(
     
 def render_node_all_categories(node: dict[str, Any]) -> None:
     blocks = attr_blocks(node.get("props"), filter_block=None)
+
     if not blocks:
         return
 
     for block_name, block_val in blocks.items():
-        st.caption(block_name)
-        sections = collect_table_sections(block_name, block_val)
-        if not sections:
+
+        st.subheader(block_name)
+
+        rows = flatten_blocks(
+            {block_name: block_val},
+            combine_value_unit=True,
+        )
+
+        if not rows:
             continue
 
-        for title, content in sections:
-            if title != block_name:
-                st.markdown(f"**{title}**")
+        df = pd.DataFrame(rows)
 
-            if isinstance(content, str):
-                st.write(content)
-                continue
-
-            row_count = len(content)
-            col_count = len(content[0]) if content else 0
-
-            if row_count == 1 and col_count == 1:
-                st.write(next(iter(content[0].values())))
-                continue
-
-            if row_count == 1:
-                df = pd.DataFrame([{k: cell_to_display(v) for k, v in content[0].items()}])
-            else:
-                df = pd.DataFrame(
-                    [{k: cell_to_display(v) for k, v in row.items()} for row in content]
-                )
-
-            st.dataframe(
-                df,
-                use_container_width=True,
-                hide_index=True,
-                height=min(44 + 30 * len(df), 260),
-            )
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True,
+            height=min(50 + 35 * len(df), 800),
+        )
             
 
 def tree_indent_fraction(depth: int) -> float:
