@@ -169,16 +169,12 @@ st.markdown(
         -webkit-user-select: text !important;
         cursor: text;
     }
-    .tree-attrs {
-        margin-top: 0.2rem;
-        margin-bottom: 0.15rem;
-    }
-    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] button[kind="tertiary"] {
+    [data-testid="stMain"] .stCaption {
+        margin: 0.1rem 0 0 0 !important;
         padding: 0 !important;
-        margin: 0 !important;
-        min-height: 0 !important;
-        height: auto !important;
-        line-height: 1.1 !important;
+    }
+    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] {
+        margin-bottom: 0.15rem !important;
     }
 
     
@@ -569,7 +565,7 @@ def render_node_all_categories(node: dict[str, Any]) -> None:
         return
 
     for block_name, block_val in blocks.items():
-        st.markdown(f'<p class="category-section">{block_name}</p>', unsafe_allow_html=True)
+        st.caption(block_name)
         sections = collect_table_sections(block_name, block_val)
         if not sections:
             continue
@@ -579,14 +575,14 @@ def render_node_all_categories(node: dict[str, Any]) -> None:
                 st.markdown(f"**{title}**")
 
             if isinstance(content, str):
-                st.markdown(f'<p class="attr-simple">{content}</p>', unsafe_allow_html=True)
+                st.write(content)
                 continue
 
             row_count = len(content)
             col_count = len(content[0]) if content else 0
 
             if row_count == 1 and col_count == 1:
-                st.markdown(f'<p class="attr-simple">{next(iter(content[0].values()))}</p>', unsafe_allow_html=True)
+                st.write(next(iter(content[0].values())))
                 continue
 
             if row_count == 1:
@@ -602,7 +598,8 @@ def render_node_all_categories(node: dict[str, Any]) -> None:
                 hide_index=True,
                 height=min(44 + 30 * len(df), 260),
             )
-                
+            
+
 def tree_indent_fraction(depth: int) -> float:
     return min(depth * 0.055, 0.33)
 
@@ -681,16 +678,10 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
             attr_indent = tree_indent_fraction(depth) + 0.02
             _, body = st.columns([attr_indent, 1.0 - attr_indent], gap="small")
             with body:
-                st.markdown('<div class="tree-attrs">', unsafe_allow_html=True)
                 render_node_all_categories(node)
-                st.markdown('</div>', unsafe_allow_html=True)
+
         for child in children:
             render_material_tree_node(indexes, child, depth + 1)
-
-def is_flat_dict(obj: Any) -> bool:
-    return isinstance(obj, dict) and all(
-        not isinstance(v, (dict, list)) for v in obj.values()
-    )
 
 def cell_to_display(v: Any) -> Any:
     if isinstance(v, (dict, list)):
