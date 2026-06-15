@@ -110,7 +110,13 @@ st.markdown(
         gap: 0 !important;
         min-height: 0 !important;
     }
-
+    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] button[kind="tertiary"] {
+        padding: 0 !important;
+        margin: 0 !important;
+        min-height: 0 !important;
+        height: auto !important;
+        line-height: 1.1 !important;
+    }
     /* BLOCK E — Compare / BOM */
     [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] .stCheckbox {
         min-height: 0 !important;
@@ -155,13 +161,7 @@ st.markdown(
         -webkit-user-select: text !important;
         cursor: text;
     }
-    [data-testid="stMain"] [data-testid="stVerticalBlock"] {
-        gap: 0.05rem !important;
-    }
-    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] {
-        padding: 0.04rem 0.35rem !important;
-        margin-bottom: 0 !important;
-    }
+    
     </style>
     """,
     unsafe_allow_html=True,
@@ -1248,6 +1248,7 @@ with st.sidebar:
         st.session_state.compare_materials = []
         st.session_state.show_compare_view = False
         st.session_state.bom = {}
+        st.session_state.expanded_material_ids = set()
         st.rerun()
 
     st.header("Navigation")
