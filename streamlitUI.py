@@ -625,32 +625,40 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
 
     def render_row() -> None:
         with st.container(border=True):
-            name_col, actions_col = st.columns([0.64, 0.36], gap="small")
-            with name_col:
+            indent_w = tree_indent_fraction(depth)
+            rem = max(1.0 - indent_w, 0.5)
+            ic, nc, sc, cc, bc = st.columns(
+                [indent_w, rem * 0.48, rem * 0.28, rem * 0.12, rem * 0.12],
+                gap="small",
+                vertical_alignment="center",
+            )
+            with ic:
+                st.empty()
+            with nc:
                 if st.button(label, key=f"mat_{node_id}", type="tertiary", use_container_width=True):
                     if is_open:
                         st.session_state.expanded_material_ids.remove(node_id)
                     else:
                         st.session_state.expanded_material_ids.append(node_id)
                     st.rerun()
-            with actions_col:
-                c1, c2 = st.columns([1.2, 0.8], gap="small")
-                with c1:
-                    st.checkbox(
-                        "Compare",
-                        value=is_material_in_compare(node_id),
-                        key=cmp_key,
-                        on_change=on_compare_toggle,
-                        args=(node_id, cname, cmp_key),
-                    )
-                with c2:
-                    st.checkbox(
-                        "BOM",
-                        value=is_in_bill(node_id),
-                        key=bom_key,
-                        on_change=on_bill_toggle,
-                        args=(node_id, bom_key),
-                    )
+            with sc:
+                st.empty()
+            with cc:
+                st.checkbox(
+                    "Compare",
+                    value=is_material_in_compare(node_id),
+                    key=cmp_key,
+                    on_change=on_compare_toggle,
+                    args=(node_id, cname, cmp_key),
+                )
+            with bc:
+                st.checkbox(
+                    "BOM",
+                    value=is_in_bill(node_id),
+                    key=bom_key,
+                    on_change=on_bill_toggle,
+                    args=(node_id, bom_key),
+                )
 
     def render_open_body() -> None:
         if blocks:
@@ -661,18 +669,9 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
         for child in children:
             render_material_tree_node(indexes, child, depth + 1)
 
-    if depth == 0:
-        render_row()
-        if is_open:
-            render_open_body()
-    else:
-        pad = tree_indent_fraction(depth)
-        _, main = st.columns([pad, 1.0 - pad], gap="small")
-        with main:
-            render_row()
-            if is_open:
-                render_open_body()
-
+    render_row()
+    if is_open:
+        render_open_body()
 
 
 def is_flat_dict(obj: Any) -> bool:
