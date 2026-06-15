@@ -218,6 +218,9 @@ st.markdown(
         padding: 0.05rem 0 !important;
         min-height: 1.4rem !important;
     }
+    div[data-testid="stHorizontalBlock"] .stCheckbox label p {
+        white-space: nowrap;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -968,7 +971,48 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
     bom_key = f"bill_tree_{node_id}"
 
     indent_w = min(depth * 0.025, 0.15)
-    actions_w = 0.20
+    actions_w = 0.24
+
+    def render_name_and_actions() -> None:
+        if depth > 0:
+            _, name_col, actions_col = st.columns(
+                [indent_w, 1.0 - indent_w - actions_w, actions_w],
+                gap="small",
+                vertical_alignment="center",
+            )
+        else:
+            name_col, actions_col = st.columns(
+                [1.0 - actions_w, actions_w],
+                gap="small",
+                vertical_alignment="center",
+            )
+
+        with name_col:
+            if st.button(label, key=f"mat_{node_id}", type="tertiary", use_container_width=True):
+                if is_open:
+                    st.session_state.expanded_material_ids.remove(node_id)
+                else:
+                    st.session_state.expanded_material_ids.append(node_id)
+                st.rerun()
+
+        with actions_col:
+            cmp_col, bom_col = st.columns(2, gap="small", vertical_alignment="center")
+            with cmp_col:
+                st.checkbox(
+                    "Compare",
+                    value=is_material_in_compare(node_id),
+                    key=cmp_key,
+                    on_change=on_compare_toggle,
+                    args=(node_id, cname, cmp_key),
+                )
+            with bom_col:
+                st.checkbox(
+                    "BOM",
+                    value=is_in_bill(node_id),
+                    key=bom_key,
+                    on_change=on_bill_toggle,
+                    args=(node_id, bom_key),
+                )
 
     with st.container(border=True):
         if is_open:
@@ -978,50 +1022,10 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                     '<div style="background:rgba(231,76,60,0.75); min-height:1.6rem; border-radius:2px;"></div>',
                     unsafe_allow_html=True,
                 )
-            row_area = body
+            with body:
+                render_name_and_actions()
         else:
-            row_area = st
-
-        with row_area:
-            if depth > 0:
-                _, name_col, actions_col = st.columns(
-                    [indent_w, 1.0 - indent_w - actions_w, actions_w],
-                    gap="small",
-                    vertical_alignment="center",
-                )
-            else:
-                name_col, actions_col = st.columns(
-                    [1.0 - actions_w, actions_w],
-                    gap="small",
-                    vertical_alignment="center",
-                )
-
-            with name_col:
-                if st.button(label, key=f"mat_{node_id}", type="tertiary", use_container_width=True):
-                    if is_open:
-                        st.session_state.expanded_material_ids.remove(node_id)
-                    else:
-                        st.session_state.expanded_material_ids.append(node_id)
-                    st.rerun()
-
-            with actions_col:
-                cmp_col, bom_col = st.columns(2, gap="small", vertical_alignment="center")
-                with cmp_col:
-                    st.checkbox(
-                        "Compare",
-                        value=is_material_in_compare(node_id),
-                        key=cmp_key,
-                        on_change=on_compare_toggle,
-                        args=(node_id, cname, cmp_key),
-                    )
-                with bom_col:
-                    st.checkbox(
-                        "BOM",
-                        value=is_in_bill(node_id),
-                        key=bom_key,
-                        on_change=on_bill_toggle,
-                        args=(node_id, bom_key),
-                    )
+            render_name_and_actions()
 
     if is_open:
         if blocks:
