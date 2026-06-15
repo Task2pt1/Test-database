@@ -72,7 +72,6 @@ st.markdown(
         margin: 0 0.25rem;
     }
 
-
     .compare-scroll {
         overflow-x: auto;
         overflow-y: auto;
@@ -122,6 +121,25 @@ st.markdown(
         min-width: 180px;
         max-width: 180px;
         width: 180px;
+    }
+
+    /* Sidebar: compact remove (×) buttons */
+    section[data-testid="stSidebar"] div[data-testid="column"] .stButton > button {
+        padding: 0.1rem 0.35rem !important;
+        min-height: 1.35rem !important;
+        font-size: 0.8rem !important;
+        line-height: 1 !important;
+    }
+
+    /* Main submaterial row: tighter Compare / BOM checkboxes */
+    div[data-testid="stHorizontalBlock"] .stCheckbox label {
+        font-size: 0.82rem;
+        gap: 0.2rem;
+    }
+
+    div[data-testid="stHorizontalBlock"] .stCheckbox label p {
+        font-size: 0.82rem;
+        margin: 0;
     }
     </style>
     """,
@@ -787,41 +805,35 @@ def render_child_branch(indexes, node):
     cmp_key = f"cmp_child_{node['id']}"
     bom_key = f"bill_child_{node['id']}"
 
-    name_col, cmp_col, bom_col = st.columns([6, 1.5, 1.5], vertical_alignment="center")
+    name_col, actions_col = st.columns([7.2, 2.3], vertical_alignment="center")
 
     with name_col:
         if st.button(title, key=f"nav_{node['id']}", use_container_width=True):
             st.session_state.path_ids = path_to_node(indexes, node["id"])
             st.rerun()
 
-    with cmp_col:
-        st.checkbox(
-            "Compare",
-            value=is_material_in_compare(node["id"]),
-            key=cmp_key,
-            on_change=on_compare_toggle,
-            args=(node["id"], cname, cmp_key),
-        )
-
-    with bom_col:
-        bom_box_col, bom_label_col = st.columns([0.4, 0.6], vertical_alignment="center")
-        with bom_box_col:
+    with actions_col:
+        cmp_col, bom_col = st.columns(2, gap="small", vertical_alignment="center")
+        with cmp_col:
+            st.checkbox(
+                "Compare",
+                value=is_material_in_compare(node["id"]),
+                key=cmp_key,
+                on_change=on_compare_toggle,
+                args=(node["id"], cname, cmp_key),
+            )
+        with bom_col:
             st.checkbox(
                 "BOM",
                 value=is_in_bill(node["id"]),
                 key=bom_key,
                 on_change=on_bill_toggle,
                 args=(node["id"], bom_key),
-                label_visibility="collapsed",
-            )
-        with bom_label_col:
-            st.markdown(
-                '<span title="Add to bill of materials" style="cursor: help;">BOM</span>',
-                unsafe_allow_html=True,
             )
 
     for child in children:
         render_child_branch(indexes, child)
+        
             
 # =============================================================================
 # SECTION 8 — BOM HELPERS
@@ -1034,6 +1046,7 @@ if browse_pick != current_root_id:
 
     st.rerun()
     #end dropdown
+
 # =============================================================================
 # SECTION 12 — SIDEBAR
 # =============================================================================
@@ -1053,7 +1066,7 @@ with st.sidebar:
         st.session_state.show_compare_view = False
         st.session_state.bom = {}
         st.rerun()
-    
+
     st.header("Navigation")
 
     with st.form("global_material_search", clear_on_submit=False):
@@ -1130,7 +1143,7 @@ with st.sidebar:
         if apply_filter_auto_dive(indexes):
             st.rerun()
         render_clickable_path(st.session_state.path_ids, indexes)
-    #
+
     if st.session_state.compare_materials:
         st.divider()
         st.markdown("**Compare List**")
@@ -1140,11 +1153,11 @@ with st.sidebar:
         for cat in sorted(compare_by_cat.keys()):
             st.markdown(f"**{cat}**")
             for m in compare_by_cat[cat]:
-                name_col, reject_col = st.columns([6, 1])
+                name_col, reject_col = st.columns([9, 1], vertical_alignment="center")
                 with name_col:
                     st.caption(f"• {m['name']}")
                 with reject_col:
-                    if st.button("✕", key=f"reject_compare_{m['id']}"):
+                    if st.button("×", key=f"reject_compare_{m['id']}", type="tertiary"):
                         remove_material_from_compare(m["id"])
                         st.rerun()
         if st.button("Clear compare list", use_container_width=True):
@@ -1161,17 +1174,19 @@ with st.sidebar:
         for cat in sorted(st.session_state.bom.keys()):
             st.markdown(f"**{cat}**")
             for item in st.session_state.bom[cat]:
-                name_col, reject_col = st.columns([6, 1])
+                name_col, reject_col = st.columns([9, 1], vertical_alignment="center")
                 with name_col:
                     st.caption(f"• {item['name']}")
                 with reject_col:
-                    if st.button("✕", key=f"reject_bom_{cat}_{item['id']}"):
+                    if st.button("×", key=f"reject_bom_{cat}_{item['id']}", type="tertiary"):
                         remove_from_bill(item["id"])
                         st.rerun()
 
     if st.button("Clear bill", use_container_width=True):
         st.session_state.bom = {}
         st.rerun()
+
+
 # =============================================================================
 # SECTION 13 — MAIN AREA GATE
 # =============================================================================
