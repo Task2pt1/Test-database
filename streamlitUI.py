@@ -787,7 +787,7 @@ def render_child_branch(indexes, node):
     cmp_key = f"cmp_child_{node['id']}"
     bom_key = f"bill_child_{node['id']}"
 
-    name_col, cmp_col, bom_col = st.columns([6, 1, 2], vertical_alignment="center")
+    name_col, cmp_col, bom_col = st.columns([7, 1.2, 1.5], vertical_alignment="center")
 
     with name_col:
         with st.expander(title, expanded=False):
@@ -796,9 +796,6 @@ def render_child_branch(indexes, node):
                 st.rerun()
 
             render_node_blocks(node)
-
-            for child in children:
-                render_child_branch(indexes, child)
 
     with cmp_col:
         st.checkbox(
@@ -811,12 +808,16 @@ def render_child_branch(indexes, node):
 
     with bom_col:
         st.checkbox(
-            "Add to BOM",
+            "BOM",
             value=is_in_bill(node["id"]),
             key=bom_key,
             on_change=on_bill_toggle,
             args=(node["id"], bom_key),
+            help="Add to bill of materials",
         )
+
+    for child in children:
+        render_child_branch(indexes, child)
             
 # =============================================================================
 # SECTION 8 — BOM HELPERS
@@ -1215,45 +1216,23 @@ with tab_path:
     if st.session_state.compare_materials:
         st.caption("view compared materials.")
 
+    #
     for i, pn in enumerate(path_nodes):
         is_current = i == len(path_nodes) - 1
         name = node_name(pn)
-       
-        
-        #
+
         value_count = len(flatten_blocks(attr_blocks(pn.get("props"), active_filter_block())))
         all_children = indexes["children_by_parent"].get(pn["id"], [])
 
         title = name
-
         if all_children:
             title += f" ({len(all_children)} submaterials)"
-
         if value_count:
             title += f" [{value_count} values]"
 
         with st.expander(title, expanded=is_current):
-
             render_node_blocks(pn)
-
-            cmp_key = f"cmp_{pn['id']}_{i}"
-            st.checkbox(
-                "Compare",
-                value=is_material_in_compare(pn["id"]),
-                key=cmp_key,
-                on_change=on_compare_toggle,
-                args=(pn["id"], name, cmp_key),
-            )
-
-            cb_key = f"bill_{pn['id']}_path_{i}"
-            st.checkbox(
-                "Add to bill of materials",
-                value=is_in_bill(pn["id"]),
-                key=cb_key,
-                on_change=on_bill_toggle,
-                args=(pn["id"], cb_key),
-            )
-
+            
     current = path_nodes[-1]
     children = visible_submaterials(indexes, current["id"])
 
