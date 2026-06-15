@@ -630,42 +630,42 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
         else:
             st.session_state.expanded_material_ids.add(node_id)
     #
-        def render_row() -> None:
-            pad = tree_indent_fraction(depth)
-    
-            if pad > 0:
-                _, box = st.columns([pad, 1.0 - pad], gap="small")
-            else:
-                box = st
-    
-            with box:
-                with st.container(border=True):
-                    name_col, ctrl_col = st.columns([0.70, 0.30], gap="small")
-    
-                    with name_col:
-                        st.button(
-                            label,
-                            key=f"tree_toggle_{node_id}",
-                            type="tertiary",
-                            use_container_width=True,
-                            on_click=toggle_expand,
-                        )
-    
-                    with ctrl_col:
-                        st.checkbox(
-                            "Compare",
-                            value=is_material_in_compare(node_id),
-                            key=cmp_key,
-                            on_change=on_compare_toggle,
-                            args=(node_id, cname, cmp_key),
-                        )
-                        st.checkbox(
-                            "BOM",
-                            value=is_in_bill(node_id),
-                            key=bom_key,
-                            on_change=on_bill_toggle,
-                            args=(node_id, bom_key),
-                        )
+    def render_row() -> None:
+        pad = tree_indent_fraction(depth)
+
+        if pad > 0:
+            _, box = st.columns([pad, 1.0 - pad], gap="small")
+        else:
+            box = st
+
+        with box:
+            with st.container(border=True):
+                name_col, ctrl_col = st.columns([0.70, 0.30], gap="small")
+
+                with name_col:
+                    st.button(
+                        label,
+                        key=f"tree_toggle_{node_id}",
+                        type="tertiary",
+                        use_container_width=True,
+                        on_click=toggle_expand,
+                    )
+
+                with ctrl_col:
+                    st.checkbox(
+                        "Compare",
+                        value=is_material_in_compare(node_id),
+                        key=cmp_key,
+                        on_change=on_compare_toggle,
+                        args=(node_id, cname, cmp_key),
+                    )
+                    st.checkbox(
+                        "BOM",
+                        value=is_in_bill(node_id),
+                        key=bom_key,
+                        on_change=on_bill_toggle,
+                        args=(node_id, bom_key),
+                    )
 
     def render_open_body() -> None:
         if blocks:
