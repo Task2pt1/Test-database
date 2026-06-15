@@ -652,11 +652,15 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                 )
 
     if is_open:
-        if blocks:
-            attr_indent = tree_indent_fraction(depth) + 0.02
-            _, body = st.columns([attr_indent, 1.0 - attr_indent], gap="small")
-            with body:
-                render_node_all_categories(node)
+        props = parse_props(node.get("props"))
+
+    blocks = {
+        k: v
+        for k, v in props.items()
+        if k not in META_KEYS and v not in (None, "", {}, [])
+    }
+    
+    value_count = len(flatten_blocks(blocks)) if blocks else 0
 
         for child in children:
             render_material_tree_node(indexes, child, depth + 1)
