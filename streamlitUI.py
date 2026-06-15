@@ -36,7 +36,6 @@ META_KEYS = {"name", "id", "code", "database", "vector", "placement"}
 
 FILTER_ATTR_OPTIONS = ["(no filter)",  *ATTR_BLOCKS]
 
-
 # =============================================================================
 # SECTION 2 — CSS
 # =============================================================================
@@ -101,26 +100,20 @@ st.markdown(
 
     /* BLOCK D — Material row boxes (slim) */
     [data-testid="stMain"] [data-testid="stVerticalBlock"] {
-        gap: 0.06rem !important;
+        gap: 0.2rem !important;
     }
 
     [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] {
-        padding: 0 0.35rem !important;
+        padding: 0.08rem 0.35rem !important;
         margin-bottom: 0.05rem !important;
-        min-height: 0 !important;
-    }
-
-    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] > div {
-        gap: 0.06 !important;
-        min-height: 0.35 !important;
     }
 
     [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] button[kind="tertiary"] {
         padding: 0 !important;
         margin: 0 !important;
         min-height: 0 !important;
-        height: 1.1rem !important;
-        line-height: 1.1rem !important;
+        height: auto !important;
+        line-height: 1.15 !important;
         font-size: 0.84rem !important;
         background: transparent !important;
         border: none !important;
@@ -133,7 +126,7 @@ st.markdown(
         text-decoration: underline;
     }
 
-    /* BLOCK E — Compare / BOM (right side, no clip) */
+    /* BLOCK E — Compare / BOM */
     [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] .stCheckbox {
         min-height: 0 !important;
         padding: 0 !important;
@@ -154,19 +147,19 @@ st.markdown(
 
     /* BLOCK F — Attribute headers + plain text */
     .category-section {
-        margin: 0.2rem 0 0.02rem 0;
+        margin: 0.15rem 0 0.02rem 0;
         font-size: 0.75rem;
         font-weight: 600;
         opacity: 0.7;
     }
 
     .attr-simple {
-        margin: 0 0 0.15rem 0.35rem;
+        margin: 0 0 0.12rem 0.35rem;
         font-size: 0.84rem;
         line-height: 1.25;
     }
 
-    /* BLOCK G — Data tables (keep shading + ⋮ menu) */
+    /* BLOCK G — Data tables (shading + ⋮ menu) */
     [data-testid="stMain"] div[data-testid="stDataFrame"] {
         margin-bottom: 0.15rem !important;
     }
@@ -570,19 +563,40 @@ def render_node_all_categories(node: dict[str, Any]) -> None:
 
         for title, content in sections:
             st.markdown(f"**{title}**")
+
             if isinstance(content, str):
                 st.write(content)
-            else:
-                df = pd.DataFrame(
-                    [{k: cell_to_display(v) for k, v in row.items()} for row in content]
-                )
+                continue
+
+            row_count = len(content)
+            col_count = len(content[0]) if content else 0
+
+            # Single value — no gray dataframe box
+            if row_count == 1 and col_count == 1:
+                st.write(next(iter(content[0].values())))
+                continue
+
+            # Single row, multiple columns (range | unit | notes) — table with shading + ⋮
+            if row_count == 1:
+                df = pd.DataFrame([{k: cell_to_display(v) for k, v in content[0].items()}])
                 st.dataframe(
                     df,
                     use_container_width=True,
                     hide_index=True,
-                    height=min(38 + 32 * len(df), 260),
+                    height=52,
                 )
-            st.markdown("")  # forces vertical gap between sections
+                continue
+
+            # Multi-row tables (technosphere, lcia, etc.)
+            df = pd.DataFrame(
+                [{k: cell_to_display(v) for k, v in row.items()} for row in content]
+            )
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+                height=min(52 + 30 * len(df), 260),
+            )
                 
 def tree_indent_fraction(depth: int) -> float:
     return min(depth * 0.055, 0.33)
