@@ -170,7 +170,13 @@ st.markdown(
         -webkit-user-select: text !important;
         cursor: text;
     }
-    
+    [data-testid="stMain"] [data-testid="stVerticalBlock"] {
+        gap: 0.05rem !important;
+    }
+    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] {
+        padding: 0.04rem 0.35rem !important;
+        margin-bottom: 0 !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -553,51 +559,31 @@ def collect_table_sections(
     return sections
     
 def render_node_all_categories(node: dict[str, Any]) -> None:
-    blocks = attr_blocks(node.get("props"), filter_block=None)
-    if not blocks:
+    parsed = parse_props(node.get("props"))
+    rows: list[dict[str, str]] = []
+
+    for key, val in sorted(parsed.items()):
+        if key in META_KEYS or val in (None, "", {}, []):
+            continue
+        rows.extend(_flatten_obj(val, key))
+
+    if not rows:
         return
 
-    for block_name, block_val in blocks.items():
-        sections = collect_table_sections(block_name, block_val)
-        if not sections:
-            continue
+    df = pd.DataFrame(rows)
+    df = df.rename(columns={"attribute": "Property", "value": "Value"})
+    df["Property"] = df["Property"].str.replace(".", " › ", regex=False)
 
-        for title, content in sections:
-            st.markdown(f"**{title}**")
-
-            if isinstance(content, str):
-                st.write(content)
-                continue
-
-            row_count = len(content)
-            col_count = len(content[0]) if content else 0
-
-            # Single value — no gray dataframe box
-            if row_count == 1 and col_count == 1:
-                st.write(next(iter(content[0].values())))
-                continue
-
-            # Single row, multiple columns (range | unit | notes) — table with shading + ⋮
-            if row_count == 1:
-                df = pd.DataFrame([{k: cell_to_display(v) for k, v in content[0].items()}])
-                st.dataframe(
-                    df,
-                    use_container_width=True,
-                    hide_index=True,
-                    height=52,
-                )
-                continue
-
-            # Multi-row tables (technosphere, lcia, etc.)
-            df = pd.DataFrame(
-                [{k: cell_to_display(v) for k, v in row.items()} for row in content]
-            )
-            st.dataframe(
-                df,
-                use_container_width=True,
-                hide_index=True,
-                height=min(52 + 30 * len(df), 260),
-            )
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Property": st.column_config.TextColumn("Property", width="medium"),
+            "Value": st.column_config.TextColumn("Value", width="large"),
+        },
+        height=min(44 + 32 * len(df), 400),
+    )
                 
 def tree_indent_fraction(depth: int) -> float:
     return min(depth * 0.055, 0.33)
@@ -629,10 +615,10 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
             st.session_state.expanded_material_ids.discard(node_id)
         else:
             st.session_state.expanded_material_ids.add(node_id)
-
+    #
     def draw_box() -> None:
         with st.container(border=True):
-            name_col, ctrl_col = st.columns([0.68, 0.32], gap="small")
+            name_col, ctrl_col = st.columns([0.72, 0.28], gap="small")
 
             with name_col:
                 st.button(
@@ -647,7 +633,7 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                 c1, c2 = st.columns(2, gap="small")
                 with c1:
                     st.checkbox(
-                        "Cmp",
+                        "Compare",
                         value=is_material_in_compare(node_id),
                         key=cmp_key,
                         on_change=on_compare_toggle,
@@ -661,7 +647,6 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                         on_change=on_bill_toggle,
                         args=(node_id, bom_key),
                     )
-
     pad = tree_indent_fraction(depth)
     if pad > 0:
         _, box = st.columns([pad, 1.0 - pad], gap="small")
