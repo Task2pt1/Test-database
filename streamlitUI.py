@@ -170,6 +170,19 @@ st.markdown(
         -webkit-user-select: text !important;
         cursor: text;
     }
+    /* Add to your existing <style> block */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        padding: 0.25rem 0.5rem !important;
+        margin-bottom: 0.15rem !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"] > div {
+        gap: 0.15rem !important;
+    }
+    .material-attrs {
+        margin-top: 0.25rem;
+        padding-top: 0.25rem;
+        border-top: 1px solid rgba(250,250,250,0.08);
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -623,35 +636,39 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
     cmp_key = f"cmp_tree_{node_id}"
     bom_key = f"bill_tree_{node_id}"
 
+    #
     def render_row() -> None:
-        with st.container(border=True):
-            if depth > 0:
-                iw = tree_indent_fraction(depth)
-                rw = 1.0 - iw
-                ic, nc, sc, cc, bc = st.columns(
-                    [iw, rw * 0.5, rw * 0.26, rw * 0.12, rw * 0.12],
-                    gap="small",
-                    vertical_alignment="center",
-                )
-                with ic:
-                    pass
-            else:
-                nc, sc, cc, bc = st.columns(
-                    [6, 3, 1.3, 0.7],
-                    gap="small",
-                    vertical_alignment="center",
-                )
+    with st.container(border=True):
+        RIGHT_RAIL = 0.22          # fixed 22% for Compare + BOM — never changes
+        indent = tree_indent_fraction(depth)
 
-            with nc:
-                if st.button(label, key=f"mat_{node_id}", type="tertiary", use_container_width=True):
-                    if is_open:
-                        st.session_state.expanded_material_ids.remove(node_id)
-                    else:
-                        st.session_state.expanded_material_ids.append(node_id)
-                    st.rerun()
-            with sc:
-                pass
-            with cc:
+        # --- ROW: name on the left, controls locked to the right ---
+        if indent > 0:
+            _, name_col, ctrl_col = st.columns(
+                [indent, 1.0 - indent - RIGHT_RAIL, RIGHT_RAIL],
+                gap="small",
+            )
+        else:
+            name_col, ctrl_col = st.columns(
+                [1.0 - RIGHT_RAIL, RIGHT_RAIL],
+                gap="small",
+            )
+
+        with name_col:
+            if st.button(
+                label,
+                key=f"tree_toggle_{node_id}",
+                use_container_width=True,
+            ):
+                if node_id in st.session_state.expanded_material_ids:
+                    st.session_state.expanded_material_ids.remove(node_id)
+                else:
+                    st.session_state.expanded_material_ids.add(node_id)
+                st.rerun()
+
+        with ctrl_col:
+            cmp_col, bom_col = st.columns(2, gap="small")
+            with cmp_col:
                 st.checkbox(
                     "Compare",
                     value=is_material_in_compare(node_id),
@@ -659,7 +676,7 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                     on_change=on_compare_toggle,
                     args=(node_id, cname, cmp_key),
                 )
-            with bc:
+            with bom_col:
                 st.checkbox(
                     "BOM",
                     value=is_in_bill(node_id),
@@ -667,6 +684,12 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                     on_change=on_bill_toggle,
                     args=(node_id, bom_key),
                 )
+
+        # --- ATTRIBUTES: inside the same box, directly under the row ---
+        if is_open:
+            st.markdown('<div class="material-attrs">', unsafe_allow_html=True)
+            render_node_all_categories(node)
+            st.markdown("</div>", unsafe_allow_html=True)
 
     def render_open_body() -> None:
         if blocks:
@@ -679,7 +702,7 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
 
     render_row()
     if is_open:
-        render_open_body()
+        render_node_all_categories(node)
 
 def is_flat_dict(obj: Any) -> bool:
     return isinstance(obj, dict) and all(
