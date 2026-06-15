@@ -475,22 +475,19 @@ def siblings_of(indexes: dict[str, Any], node_id: str) -> list[dict[str, Any]]:
     sibs.sort(key=node_name)
     return sibs
 
-
-def render_all_node_data(node: dict[str, Any]) -> None:
-    props = all_node_data(node)
-    if not props:
-        st.caption("No properties on this node.")
+def render_node_blocks_by_category(node: dict[str, Any]) -> None:
+    blocks = attr_blocks(node.get("props"), active_filter_block())
+    if not blocks:
+        block = active_filter_block()
+        st.caption(
+            f"No `{block}` data on this node." if block
+            else "No attribute values on this node.")
         return
 
-    keys = sorted(props.keys())
-    tabs = st.tabs(keys)
-    for tab, key in zip(tabs, keys):
+    tabs = st.tabs(list(blocks.keys()))
+    for tab, (group_name, group_val) in zip(tabs, blocks.items()):
         with tab:
-            val = props[key]
-            if val in (None, "", {}, []):
-                st.caption("(empty)")
-            else:
-                render_nested(None, val)
+            render_nested(None, group_val)
 
 def is_flat_dict(obj: Any) -> bool:
     return isinstance(obj, dict) and all(
@@ -831,7 +828,7 @@ def render_child_branch(indexes, node):
     cname = node_name(node)
     children = indexes["children_by_parent"].get(node["id"], [])
 
-    value_count = all_node_value_count(node)
+    value_count = len(flatten_blocks(attr_blocks(node.get("props"), active_filter_block())))
 
     title = cname
     if children:
@@ -867,9 +864,6 @@ def render_child_branch(indexes, node):
                 on_change=on_bill_toggle,
                 args=(node["id"], bom_key),
             )
-
-    for child in children:
-        render_child_branch(indexes, child)
         
             
 # =============================================================================
@@ -1253,72 +1247,20 @@ subtree = get_subtree_rows_from_indexes(current_id, indexes)
 tab_path, tab_table, tab_compare, tab_bom = st.tabs(
     ["Path + explore", "All values (table)", "Compare", "Export BOM"])
 
-# --- TAB 1 ---
-
-# --- TAB 1 ---
-with tab_path:
-    path_nodes = [
-        indexes["nodes_by_id"][nid]
-        for nid in st.session_state.path_ids
-        if nid in indexes["nodes_by_id"]
-    ]
-
-    if path_nodes:
-        st.subheader(" › ".join(node_name(pn) for pn in path_nodes))
-    else:
-        st.subheader("Explore")
-
-    if st.session_state.compare_materials:
-        st.caption("view compared materials.")
-
-    current = path_nodes[-1]
-    current_name = node_name(current)
-    current_id = current["id"]
-
-    all_children = indexes["children_by_parent"].get(current_id, [])
-    down_children = visible_submaterials(indexes, current_id)
-    siblings = siblings_of(indexes, current_id)
-    parent_id = indexes["parent_by_id"].get(current_id)
-    value_count = all_node_value_count(current)
-
-    if value_count:
-        st.markdown(f"**{current_name}** — {value_count} values")
-    elif all_children:
-        st.markdown(f"**{current_name}** — category ({len(all_children)} submaterials)")
-    else:
-        st.markdown(f"**{current_name}**")
-
-    render_all_node_data(current)
-
-    if parent_id and parent_id in indexes["nodes_by_id"]:
-        parent = indexes["nodes_by_id"][parent_id]
-        st.markdown("**Up**")
-        if st.button(
-            f"↑ {node_name(parent)}",
-            key=f"nav_up_{parent_id}",
-            use_container_width=True,
-        ):
-            st.session_state.path_ids = st.session_state.path_ids[:-1]
-            st.rerun()
-
-    if siblings:
-        st.markdown("**Same level**")
-        for sib in siblings:
-            render_child_branch(indexes, sib)
-
-    if down_children:
+def render_node_blocks_by_category(node: dict[str, Any]) -> None:
+    blocks = attr_blocks(node.get("props"), active_filter_block())
+    if not blocks:
         block = active_filter_block()
-        if block:
-            st.markdown(f"**Down — submaterials** (with `{block}`)")
-        else:
-            st.markdown("**Down — submaterials**")
-        for child in down_children:
-            render_child_branch(indexes, child)
-    elif all_children:
-        st.caption("Materials exist in this category but none match the current sidebar filter.")
-    else:
-        st.caption("No materials in this group.")
+        st.caption(
+            f"No `{block}` data on this node." if block
+            else "No attribute values on this node."
+        )
+        return
 
+    tabs = st.tabs(list(blocks.keys()))
+    for tab, (group_name, group_val) in zip(tabs, blocks.items()):
+        with tab:
+            render_nested(None, group_val)
 
 # --- TAB 2 ---------------------------------------------------------------------------------
 with tab_table:
