@@ -625,15 +625,23 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
 
     def render_row() -> None:
         with st.container(border=True):
-            indent_w = tree_indent_fraction(depth)
-            rem = max(1.0 - indent_w, 0.5)
-            ic, nc, sc, cc, bc = st.columns(
-                [indent_w, rem * 0.48, rem * 0.28, rem * 0.12, rem * 0.12],
-                gap="small",
-                vertical_alignment="center",
-            )
-            with ic:
-                st.empty()
+            if depth > 0:
+                iw = tree_indent_fraction(depth)
+                rw = 1.0 - iw
+                ic, nc, sc, cc, bc = st.columns(
+                    [iw, rw * 0.5, rw * 0.26, rw * 0.12, rw * 0.12],
+                    gap="small",
+                    vertical_alignment="center",
+                )
+                with ic:
+                    pass
+            else:
+                nc, sc, cc, bc = st.columns(
+                    [6, 3, 1.3, 0.7],
+                    gap="small",
+                    vertical_alignment="center",
+                )
+
             with nc:
                 if st.button(label, key=f"mat_{node_id}", type="tertiary", use_container_width=True):
                     if is_open:
@@ -642,7 +650,7 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                         st.session_state.expanded_material_ids.append(node_id)
                     st.rerun()
             with sc:
-                st.empty()
+                pass
             with cc:
                 st.checkbox(
                     "Compare",
@@ -672,7 +680,6 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
     render_row()
     if is_open:
         render_open_body()
-
 
 def is_flat_dict(obj: Any) -> bool:
     return isinstance(obj, dict) and all(
