@@ -804,17 +804,18 @@ def render_child_branch(indexes, node):
         )
 
     with bom_col:
+        st.markdown(
+            '<span title="Add to bill of materials" style="cursor: help;">BOM</span>',
+            unsafe_allow_html=True,
+        )
         st.checkbox(
             "BOM",
             value=is_in_bill(node["id"]),
             key=bom_key,
             on_change=on_bill_toggle,
             args=(node["id"], bom_key),
-            help="Add to bill of materials",
+            label_visibility="collapsed",
         )
-
-    for child in children:
-        render_child_branch(indexes, child)
             
 # =============================================================================
 # SECTION 8 — BOM HELPERS
@@ -1049,7 +1050,6 @@ with st.sidebar:
     
     st.header("Navigation")
 
-
     with st.form("global_material_search", clear_on_submit=False):
         search_query = st.text_input("query", placeholder="", label_visibility="collapsed")
         search_submitted = st.form_submit_button("Search")
@@ -1128,19 +1128,14 @@ with st.sidebar:
     if st.session_state.compare_materials:
         st.divider()
         st.markdown("**Compare List**")
-        compare_groups = defaultdict(list)
         for m in st.session_state.compare_materials:
-            compare_groups[m.get("category", "Uncategorized")].append(m)
-        for cat in sorted(compare_groups.keys()):
-            st.markdown(f"**{cat}**")
-            for m in compare_groups[cat]:
-                name_col, reject_col = st.columns([6, 1])
-                with name_col:
-                    st.caption(f"• {m['name']}")
-                with reject_col:
-                    if st.button("✕", key=f"reject_compare_{m['id']}"):
-                        remove_material_from_compare(m["id"])
-                        st.rerun()
+            name_col, reject_col = st.columns([6, 1])
+            with name_col:
+                st.caption(f"• {m['name']}")
+            with reject_col:
+                if st.button("✕", key=f"reject_compare_{m['id']}"):
+                    remove_material_from_compare(m["id"])
+                    st.rerun()
         if st.button("Clear compare list", use_container_width=True):
             st.session_state.compare_materials = []
             st.session_state.compare_parts = []
