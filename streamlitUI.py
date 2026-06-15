@@ -110,6 +110,14 @@ st.markdown(
         gap: 0 !important;
         min-height: 0 !important;
     }
+    .tree-attrs {
+        margin-top: 0.2rem;
+        margin-bottom: 0.15rem;
+    }
+
+    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] {
+        margin-bottom: 0.08rem !important;
+    }
     [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] button[kind="tertiary"] {
         padding: 0 !important;
         margin: 0 !important;
@@ -161,6 +169,18 @@ st.markdown(
         -webkit-user-select: text !important;
         cursor: text;
     }
+    .tree-attrs {
+        margin-top: 0.2rem;
+        margin-bottom: 0.15rem;
+    }
+    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] button[kind="tertiary"] {
+        padding: 0 !important;
+        margin: 0 !important;
+        min-height: 0 !important;
+        height: auto !important;
+        line-height: 1.1 !important;
+    }
+
     
     </style>
     """,
@@ -614,7 +634,6 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
         else:
             st.session_state.expanded_material_ids.add(node_id)
 
-    #
     with st.container(border=True):
         RIGHT = 0.28
         indent = tree_indent_fraction(depth)
@@ -656,12 +675,15 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                     on_change=on_bill_toggle,
                     args=(node_id, bom_key),
                 )
+
     if is_open:
         if blocks:
-            pad2 = tree_indent_fraction(depth + 1)
-            _, body = st.columns([pad2, 1.0 - pad2], gap="small")
+            attr_indent = tree_indent_fraction(depth) + 0.02
+            _, body = st.columns([attr_indent, 1.0 - attr_indent], gap="small")
             with body:
+                st.markdown('<div class="tree-attrs">', unsafe_allow_html=True)
                 render_node_all_categories(node)
+                st.markdown('</div>', unsafe_allow_html=True)
         for child in children:
             render_material_tree_node(indexes, child, depth + 1)
 
@@ -1405,9 +1427,6 @@ tab_path, tab_compare, tab_bom = st.tabs(
 with tab_path:
     root_id = st.session_state.path_ids[0]
     root_node = indexes["nodes_by_id"][root_id]
-
-    if st.session_state.compare_materials:
-        st.caption("view compared materials.")
 
     render_material_tree_node(indexes, root_node, depth=0)
 
