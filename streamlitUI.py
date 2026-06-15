@@ -98,32 +98,17 @@ st.markdown(
         font-size: 0.8rem !important;
     }
 
-    /* BLOCK D — Material row boxes (slim) */
     [data-testid="stMain"] [data-testid="stVerticalBlock"] {
-        gap: 0.2rem !important;
+        gap: 0 !important;
     }
-
     [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] {
-        padding: 0.08rem 0.35rem !important;
-        margin-bottom: 0.05rem !important;
-    }
-
-    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] button[kind="tertiary"] {
-        padding: 0 !important;
+        padding: 0 0.3rem !important;
         margin: 0 !important;
         min-height: 0 !important;
-        height: auto !important;
-        line-height: 1.15 !important;
-        font-size: 0.84rem !important;
-        background: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-        text-align: left !important;
-        justify-content: flex-start !important;
     }
-
-    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] button[kind="tertiary"]:hover {
-        text-decoration: underline;
+    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] > div {
+        gap: 0 !important;
+        min-height: 0 !important;
     }
 
     /* BLOCK E — Compare / BOM */
@@ -559,31 +544,44 @@ def collect_table_sections(
     return sections
     
 def render_node_all_categories(node: dict[str, Any]) -> None:
-    parsed = parse_props(node.get("props"))
-    rows: list[dict[str, str]] = []
-
-    for key, val in sorted(parsed.items()):
-        if key in META_KEYS or val in (None, "", {}, []):
-            continue
-        rows.extend(_flatten_obj(val, key))
-
-    if not rows:
+    blocks = attr_blocks(node.get("props"), filter_block=None)
+    if not blocks:
         return
 
-    df = pd.DataFrame(rows)
-    df = df.rename(columns={"attribute": "Property", "value": "Value"})
-    df["Property"] = df["Property"].str.replace(".", " › ", regex=False)
+    for block_name, block_val in blocks.items():
+        st.markdown(f'<p class="category-section">{block_name}</p>', unsafe_allow_html=True)
+        sections = collect_table_sections(block_name, block_val)
+        if not sections:
+            continue
 
-    st.dataframe(
-        df,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Property": st.column_config.TextColumn("Property", width="medium"),
-            "Value": st.column_config.TextColumn("Value", width="large"),
-        },
-        height=min(44 + 32 * len(df), 400),
-    )
+        for title, content in sections:
+            if title != block_name:
+                st.markdown(f"**{title}**")
+
+            if isinstance(content, str):
+                st.markdown(f'<p class="attr-simple">{content}</p>', unsafe_allow_html=True)
+                continue
+
+            row_count = len(content)
+            col_count = len(content[0]) if content else 0
+
+            if row_count == 1 and col_count == 1:
+                st.markdown(f'<p class="attr-simple">{next(iter(content[0].values()))}</p>', unsafe_allow_html=True)
+                continue
+
+            if row_count == 1:
+                df = pd.DataFrame([{k: cell_to_display(v) for k, v in content[0].items()}])
+            else:
+                df = pd.DataFrame(
+                    [{k: cell_to_display(v) for k, v in row.items()} for row in content]
+                )
+
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+                height=min(44 + 30 * len(df), 260),
+            )
                 
 def tree_indent_fraction(depth: int) -> float:
     return min(depth * 0.055, 0.33)
@@ -615,46 +613,49 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
             st.session_state.expanded_material_ids.discard(node_id)
         else:
             st.session_state.expanded_material_ids.add(node_id)
+
     #
-    def draw_box() -> None:
-        with st.container(border=True):
-            name_col, ctrl_col = st.columns([0.72, 0.28], gap="small")
-
-            with name_col:
-                st.button(
-                    label,
-                    key=f"tree_toggle_{node_id}",
-                    type="tertiary",
-                    use_container_width=True,
-                    on_click=toggle_expand,
+    with st.container(border=True):
+        RIGHT = 0.28
+        indent = tree_indent_fraction(depth)
+        if indent > 0:
+            _, name_col, ctrl_col = st.columns(
+                [indent, 1.0 - indent - RIGHT, RIGHT],
+                gap="small",
+                vertical_alignment="center",
+            )
+        else:
+            name_col, ctrl_col = st.columns(
+                [1.0 - RIGHT, RIGHT],
+                gap="small",
+                vertical_alignment="center",
+            )
+        with name_col:
+            st.button(
+                label,
+                key=f"tree_toggle_{node_id}",
+                type="tertiary",
+                use_container_width=True,
+                on_click=toggle_expand,
+            )
+        with ctrl_col:
+            c1, c2 = st.columns(2, gap="small")
+            with c1:
+                st.checkbox(
+                    "Compare",
+                    value=is_material_in_compare(node_id),
+                    key=cmp_key,
+                    on_change=on_compare_toggle,
+                    args=(node_id, cname, cmp_key),
                 )
-
-            with ctrl_col:
-                c1, c2 = st.columns(2, gap="small")
-                with c1:
-                    st.checkbox(
-                        "Compare",
-                        value=is_material_in_compare(node_id),
-                        key=cmp_key,
-                        on_change=on_compare_toggle,
-                        args=(node_id, cname, cmp_key),
-                    )
-                with c2:
-                    st.checkbox(
-                        "BOM",
-                        value=is_in_bill(node_id),
-                        key=bom_key,
-                        on_change=on_bill_toggle,
-                        args=(node_id, bom_key),
-                    )
-    pad = tree_indent_fraction(depth)
-    if pad > 0:
-        _, box = st.columns([pad, 1.0 - pad], gap="small")
-        with box:
-            draw_box()
-    else:
-        draw_box()
-
+            with c2:
+                st.checkbox(
+                    "BOM",
+                    value=is_in_bill(node_id),
+                    key=bom_key,
+                    on_change=on_bill_toggle,
+                    args=(node_id, bom_key),
+                )
     if is_open:
         if blocks:
             pad2 = tree_indent_fraction(depth + 1)
