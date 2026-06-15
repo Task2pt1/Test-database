@@ -959,11 +959,7 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
     cmp_key = f"cmp_tree_{node_id}"
     bom_key = f"bill_tree_{node_id}"
 
-    indent = min(depth * 0.03, 0.18)
-    row_col = st.columns([indent, 1 - indent], gap="small") if depth > 0 else None
-    row_target = row_col[1] if row_col else st
-
-    with row_target:
+    def render_row_box() -> None:
         with st.container(border=True):
             name_col, actions_col = st.columns([7.5, 2.2], vertical_alignment="center")
             with name_col:
@@ -992,16 +988,25 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                         args=(node_id, bom_key),
                     )
 
+    if depth > 0:
+        indent = min(depth * 0.03, 0.18)
+        _, main_col = st.columns([indent, 1 - indent], gap="small")
+        with main_col:
+            render_row_box()
+    else:
+        render_row_box()
+
     if is_open:
         if blocks:
             attr_indent = min((depth + 1) * 0.03, 0.21)
-            attr_col = st.columns([attr_indent, 1 - attr_indent], gap="small")
-            with attr_col[1]:
+            _, attr_main = st.columns([attr_indent, 1 - attr_indent], gap="small")
+            with attr_main:
                 with st.container(border=True):
                     render_node_all_categories(node)
 
         for child in children:
             render_material_tree_node(indexes, child, depth + 1)
+
 
 # =============================================================================
 # SECTION 8 — BOM HELPERS
