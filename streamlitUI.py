@@ -629,36 +629,31 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
             st.session_state.expanded_material_ids.discard(node_id)
         else:
             st.session_state.expanded_material_ids.add(node_id)
-    #
-    def render_row() -> None:
-        pad = tree_indent_fraction(depth)
 
-        if pad > 0:
-            _, box = st.columns([pad, 1.0 - pad], gap="small")
-        else:
-            box = st
+    def draw_box() -> None:
+        with st.container(border=True):
+            name_col, ctrl_col = st.columns([0.68, 0.32], gap="small")
 
-        with box:
-            with st.container(border=True):
-                name_col, ctrl_col = st.columns([0.70, 0.30], gap="small")
+            with name_col:
+                st.button(
+                    label,
+                    key=f"tree_toggle_{node_id}",
+                    type="tertiary",
+                    use_container_width=True,
+                    on_click=toggle_expand,
+                )
 
-                with name_col:
-                    st.button(
-                        label,
-                        key=f"tree_toggle_{node_id}",
-                        type="tertiary",
-                        use_container_width=True,
-                        on_click=toggle_expand,
-                    )
-
-                with ctrl_col:
+            with ctrl_col:
+                c1, c2 = st.columns(2, gap="small")
+                with c1:
                     st.checkbox(
-                        "Compare",
+                        "Cmp",
                         value=is_material_in_compare(node_id),
                         key=cmp_key,
                         on_change=on_compare_toggle,
                         args=(node_id, cname, cmp_key),
                     )
+                with c2:
                     st.checkbox(
                         "BOM",
                         value=is_in_bill(node_id),
@@ -667,18 +662,22 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                         args=(node_id, bom_key),
                     )
 
-    def render_open_body() -> None:
+    pad = tree_indent_fraction(depth)
+    if pad > 0:
+        _, box = st.columns([pad, 1.0 - pad], gap="small")
+        with box:
+            draw_box()
+    else:
+        draw_box()
+
+    if is_open:
         if blocks:
-            pad = tree_indent_fraction(depth + 1)
-            _, body = st.columns([pad, 1.0 - pad], gap="small")
+            pad2 = tree_indent_fraction(depth + 1)
+            _, body = st.columns([pad2, 1.0 - pad2], gap="small")
             with body:
                 render_node_all_categories(node)
         for child in children:
             render_material_tree_node(indexes, child, depth + 1)
-
-    render_row()
-    if is_open:
-        render_open_body()
 
 def is_flat_dict(obj: Any) -> bool:
     return isinstance(obj, dict) and all(
