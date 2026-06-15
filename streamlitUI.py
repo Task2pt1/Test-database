@@ -932,45 +932,53 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
     cmp_key = f"cmp_tree_{node_id}"
     bom_key = f"bill_tree_{node_id}"
 
-    name_col, actions_col = st.columns([7.5, 2.2], vertical_alignment="center")
+    if depth:
+        st.markdown(f"<div style='margin-left:{depth * 16}px'>", unsafe_allow_html=True)
 
-    with name_col:
-        if st.button(label, key=f"mat_{node_id}", type="tertiary", use_container_width=True):
-            if is_open:
-                st.session_state.expanded_material_ids.remove(node_id)
-            else:
-                st.session_state.expanded_material_ids.append(node_id)
-            st.rerun()
+    row_class = "mat-row-open" if is_open else "mat-row"
+    st.markdown(f'<div class="{row_class}">', unsafe_allow_html=True)
 
-    with actions_col:
-        cmp_col, bom_col = st.columns(2, gap="small", vertical_alignment="center")
-        with cmp_col:
-            st.checkbox(
-                "Compare",
-                value=is_material_in_compare(node_id),
-                key=cmp_key,
-                on_change=on_compare_toggle,
-                args=(node_id, cname, cmp_key),
-            )
-        with bom_col:
-            st.checkbox(
-                "BOM",
-                value=is_in_bill(node_id),
-                key=bom_key,
-                on_change=on_bill_toggle,
-                args=(node_id, bom_key),
-            )
+    with st.container(border=True):
+        name_col, actions_col = st.columns([7.5, 2.2], vertical_alignment="center")
+        with name_col:
+            if st.button(label, key=f"mat_{node_id}", type="tertiary", use_container_width=True):
+                if is_open:
+                    st.session_state.expanded_material_ids.remove(node_id)
+                else:
+                    st.session_state.expanded_material_ids.append(node_id)
+                st.rerun()
+        with actions_col:
+            cmp_col, bom_col = st.columns(2, gap="small", vertical_alignment="center")
+            with cmp_col:
+                st.checkbox(
+                    "Compare",
+                    value=is_material_in_compare(node_id),
+                    key=cmp_key,
+                    on_change=on_compare_toggle,
+                    args=(node_id, cname, cmp_key),
+                )
+            with bom_col:
+                st.checkbox(
+                    "BOM",
+                    value=is_in_bill(node_id),
+                    key=bom_key,
+                    on_change=on_bill_toggle,
+                    args=(node_id, bom_key),
+                )
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if is_open:
-        st.markdown(
-            f"<div style='margin-left:{(depth + 1) * 18}px'>",
-            unsafe_allow_html=True,
-        )
-        render_node_all_categories(node)
+        st.markdown('<div class="mat-attrs-panel">', unsafe_allow_html=True)
+        with st.container(border=True):
+            render_node_all_categories(node)
         st.markdown("</div>", unsafe_allow_html=True)
 
         for child in children:
             render_material_tree_node(indexes, child, depth + 1)
+
+    if depth:
+        st.markdown("</div>", unsafe_allow_html=True)
 
 # =============================================================================
 # SECTION 8 — BOM HELPERS
