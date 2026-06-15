@@ -210,6 +210,14 @@ st.markdown(
         -webkit-user-select: text !important;
         cursor: text;
     }
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        padding: 0.08rem 0.35rem !important;
+        margin-bottom: 0.12rem !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"] button[kind="tertiary"] {
+        padding: 0.05rem 0 !important;
+        min-height: 1.4rem !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -959,9 +967,35 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
     cmp_key = f"cmp_tree_{node_id}"
     bom_key = f"bill_tree_{node_id}"
 
-    def render_row_box() -> None:
-        with st.container(border=True):
-            name_col, actions_col = st.columns([7.5, 2.2], vertical_alignment="center")
+    indent_w = min(depth * 0.025, 0.15)
+    actions_w = 0.20
+
+    with st.container(border=True):
+        if is_open:
+            accent, body = st.columns([0.008, 0.992], gap="small")
+            with accent:
+                st.markdown(
+                    '<div style="background:rgba(231,76,60,0.75); min-height:1.6rem; border-radius:2px;"></div>',
+                    unsafe_allow_html=True,
+                )
+            row_area = body
+        else:
+            row_area = st
+
+        with row_area:
+            if depth > 0:
+                _, name_col, actions_col = st.columns(
+                    [indent_w, 1.0 - indent_w - actions_w, actions_w],
+                    gap="small",
+                    vertical_alignment="center",
+                )
+            else:
+                name_col, actions_col = st.columns(
+                    [1.0 - actions_w, actions_w],
+                    gap="small",
+                    vertical_alignment="center",
+                )
+
             with name_col:
                 if st.button(label, key=f"mat_{node_id}", type="tertiary", use_container_width=True):
                     if is_open:
@@ -969,6 +1003,7 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                     else:
                         st.session_state.expanded_material_ids.append(node_id)
                     st.rerun()
+
             with actions_col:
                 cmp_col, bom_col = st.columns(2, gap="small", vertical_alignment="center")
                 with cmp_col:
@@ -988,17 +1023,9 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                         args=(node_id, bom_key),
                     )
 
-    if depth > 0:
-        indent = min(depth * 0.03, 0.18)
-        _, main_col = st.columns([indent, 1 - indent], gap="small")
-        with main_col:
-            render_row_box()
-    else:
-        render_row_box()
-
     if is_open:
         if blocks:
-            attr_indent = min((depth + 1) * 0.03, 0.21)
+            attr_indent = min((depth + 1) * 0.025, 0.18)
             _, attr_main = st.columns([attr_indent, 1 - attr_indent], gap="small")
             with attr_main:
                 with st.container(border=True):
@@ -1006,7 +1033,6 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
 
         for child in children:
             render_material_tree_node(indexes, child, depth + 1)
-
 
 # =============================================================================
 # SECTION 8 — BOM HELPERS
