@@ -143,9 +143,7 @@ st.markdown(
         margin: 0 !important;
         white-space: nowrap !important;
     }
-    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] .stCheckbox {
-    min-width: 90px !important;
-    }
+
 
     /* BLOCK F — Attribute headers + plain text */
     .category-section {
@@ -652,7 +650,7 @@ def render_material_tree_node(
     with st.container(border=True):
 
         compare_col, bom_col, _ = st.columns(
-            [1, 1, 8],
+            [3, 2, 5],
             gap="small",
             vertical_alignment="center",
         )
