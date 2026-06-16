@@ -689,26 +689,27 @@ def render_material_tree_node(
             toggle_expand()
             st.rerun()
             
+        #
         if is_open:
-
+        
+            if blocks:
+        
+                attr_indent = tree_indent_fraction(depth) + 0.02
+        
+                _, body = st.columns(
+                    [attr_indent, 1.0 - attr_indent],
+                    gap="small",
+                )
+        
+                with body:
+                    render_node_all_categories(node)
+        
             for child in children:
                 render_material_tree_node(
                     indexes,
                     child,
                     depth + 1,
                 )
-
-            if blocks:
-
-                attr_indent = tree_indent_fraction(depth) + 0.02
-
-                _, body = st.columns(
-                    [attr_indent, 1.0 - attr_indent],
-                    gap="small",
-                )
-
-                with body:
-                    render_node_all_categories(node)
 
     st.markdown(
         "</div>",
