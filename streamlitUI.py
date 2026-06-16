@@ -1502,7 +1502,8 @@ with st.sidebar:
         )
         
         if target:
-        
+            st.write("target", target)
+            st.write("path", path_to_node(indexes, target))
             path = path_to_node(
                 indexes,
                 target,
