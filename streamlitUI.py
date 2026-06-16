@@ -1501,7 +1501,7 @@ with st.sidebar:
             or st.session_state.path_ids[-1]
         )
         
-        if target in indexes["nodes_by_id"]:
+        if target:
         
             path = path_to_node(
                 indexes,
@@ -1510,12 +1510,13 @@ with st.sidebar:
         
             st.session_state.path_ids = path
         
-            for node_id in path:
-                st.session_state.expanded_material_ids.add(
-                    node_id
-                )
+            st.session_state.expanded_material_ids = set(path)
         
-            st.session_state.nav_target_id = None
+            for node_id in path:
+                for desc_id in indexes["descendants_by_id"].get(node_id, []):
+                    st.session_state.expanded_material_ids.add(desc_id)
+        
+            st.session_state.nav_target_id = None#
 
         if apply_filter_auto_dive(indexes):
             st.rerun()
