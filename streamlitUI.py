@@ -1473,6 +1473,7 @@ with st.sidebar:
                     st.session_state.nav_target_id = hit["id"]
                     st.session_state.path_ids = [root_id]
                     st.session_state.root_indexes = None
+                    st.session_state.expanded_material_ids = set()
                     st.rerun()
 
     filter_pick = st.selectbox(
