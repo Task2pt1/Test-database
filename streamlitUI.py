@@ -560,15 +560,14 @@ def collect_table_sections(
     return sections
     
 def render_node_all_categories(node: dict[str, Any]) -> None:
-    blocks = attr_blocks(node.get("props"), filter_block=None)
-
-    if not blocks:
-        return
-
-    for block_name, block_val in blocks.items():
-
+    props = parse_props(node.get("props"))
+    for block_name in ATTR_BLOCKS:
+        if block_name not in props:
+            continue
+        block_val = props[block_name]
+        if block_val in (None, "", {}, []):
+            continue
         st.markdown(f"## {block_name}")
-
         render_nested(None, block_val)
 
 
@@ -694,35 +693,31 @@ def render_nested(key: str | None, obj: Any, level: int = 0) -> None:
 
     if obj in (None, "", {}, []):
         return
-
     indent = "&nbsp;" * (level * 6)
-
     if isinstance(obj, dict):
-
         for k, v in obj.items():
-
-            if isinstance(v, (dict, list)):
+            if isinstance(v, dict):
                 st.markdown(
                     f"{indent}<b>{k}</b>",
                     unsafe_allow_html=True,
                 )
-                render_nested(None, v, level + 1)
-
+                render_nested(k, v, level + 1)
+            elif isinstance(v, list):
+                st.markdown(
+                    f"{indent}<b>{k}</b>",
+                    unsafe_allow_html=True,
+                )
+                render_nested(k, v, level + 1)
             else:
                 st.markdown(
                     f"{indent}{k}: {v}",
                     unsafe_allow_html=True,
                 )
-
         return
-
     if isinstance(obj, list):
-
         for item in obj:
-            render_nested(None, item, level)
-
+            render_nested(key, item, level)
         return
-
     st.markdown(
         f"{indent}{obj}",
         unsafe_allow_html=True,
