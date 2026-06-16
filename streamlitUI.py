@@ -625,16 +625,16 @@ def render_material_tree_node(
 
     #
     with st.container(border=True):
-
-        indent = min(depth, 12)
-
-        left_pad, name_col, ctrl_col = st.columns(
-            [indent + 1, 12, 4],
+    
+        indent = min(depth * 0.04, 0.30)
+    
+        left_pad, node_col, compare_col, bom_col = st.columns(
+            [indent, 0.72 - indent, 0.14, 0.14],
             gap="small",
             vertical_alignment="center",
         )
     
-        with name_col:
+        with node_col:
             st.button(
                 label,
                 key=f"tree_toggle_{node_id}",
@@ -642,31 +642,29 @@ def render_material_tree_node(
                 use_container_width=True,
                 on_click=toggle_expand,
             )
-
-        with ctrl_col:
-
-            c1, c2 = st.columns(
-                [1, 1],
-                gap="small",
+    
+        with compare_col:
+            st.checkbox(
+                "",
+                value=is_material_in_compare(node_id),
+                key=cmp_key,
+                on_change=on_compare_toggle,
+                args=(node_id, cname, cmp_key),
+                label_visibility="collapsed",
             )
-
-            with c1:
-                st.checkbox(
-                    "Compare",
-                    value=is_material_in_compare(node_id),
-                    key=cmp_key,
-                    on_change=on_compare_toggle,
-                    args=(node_id, cname, cmp_key),
-                )
-
-            with c2:
-                st.checkbox(
-                    "BOM",
-                    value=is_in_bill(node_id),
-                    key=bom_key,
-                    on_change=on_bill_toggle,
-                    args=(node_id, bom_key),
-                )
+            st.caption("Compare")
+    
+        with bom_col:
+            st.checkbox(
+                "",
+                value=is_in_bill(node_id),
+                key=bom_key,
+                on_change=on_bill_toggle,
+                args=(node_id, bom_key),
+                label_visibility="collapsed",
+            )
+            st.caption("BOM")
+        
 
     if is_open:
 
