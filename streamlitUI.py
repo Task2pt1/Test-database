@@ -650,7 +650,7 @@ def render_material_tree_node(
     with st.container(border=True):
 
         compare_col, bom_col, _ = st.columns(
-            [1,2,8],
+            [1,.5,8],
             gap="small",
             vertical_alignment="center",
         )
