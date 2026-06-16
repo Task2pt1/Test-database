@@ -350,19 +350,21 @@ def get_root_nodes() -> list[dict[str, str]]:
 def fetch_root_subtree(root_id: str) -> list[dict[str, Any]]:
     return run_query(
         f"""
-        MATCH (root:{NODE_LABEL} {{id: $root_id}})
-        OPTIONAL MATCH p = (root)-[:{CHILD_REL}*0..]->(n:{NODE_LABEL})
-        WITH root, n, min(length(p)) AS depth
+        MATCH (root:{NODE_LABEL} {{id:$root_id}})
+    
+        MATCH p=(root)-[:{CHILD_REL}*0..]->(n:{NODE_LABEL})
+    
+        WITH n, min(length(p)) AS depth
+    
         OPTIONAL MATCH (parent:{NODE_LABEL})-[:{CHILD_REL}]->(n)
-        WHERE parent IS NULL
-           OR parent = root
-           OR (root)-[:{CHILD_REL}*1..]->(parent)
+    
         RETURN
             n.id AS id,
             n.name AS label,
             properties(n) AS props,
             depth,
-            head([x IN collect(parent.id) WHERE x IS NOT NULL]) AS parent_id
+            parent.id AS parent_id
+    
         ORDER BY depth, label
         """,
         {"root_id": root_id},
