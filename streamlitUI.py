@@ -678,13 +678,17 @@ def render_material_tree_node(
             else f"{arrow} {title}"
         )
 
-        st.button(
+        #
+        clicked = st.button(
             label,
             key=f"tree_toggle_{node_id}",
             use_container_width=True,
-            on_click=toggle_expand,
         )
-
+        
+        if clicked:
+            toggle_expand()
+            st.rerun()
+            
         if is_open:
 
             for child in children:
