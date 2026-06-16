@@ -644,27 +644,15 @@ def render_material_tree_node(
         #
         with node_box:
         
-            with st.container(border=True):
+            indent_px = depth * 24
         
-                indent_px = depth * 24
-        
-                st.markdown(
-                    f"""
-                    <div style="padding-left:{indent_px}px;">
-                    """,
-                    unsafe_allow_html=True,
-                )
-        
-                st.button(
-                    label,
-                    key=f"tree_toggle_{node_id}",
-                    type="tertiary",
-                    use_container_width=True,
-                    on_click=toggle_expand,
-                )
-        
-                st.markdown("</div>", unsafe_allow_html=True)
-
+            if st.button(
+                label,
+                key=f"tree_toggle_{node_id}",
+                use_container_width=True,
+                on_click=toggle_expand,
+            ):
+                pass
             
         with controls_box:
 
