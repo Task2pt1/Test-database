@@ -666,23 +666,23 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
     #
     if is_open:
 
-    for child in children:
-        render_material_tree_node(
-            indexes,
-            child,
-            depth + 1,
-        )
+        for child in children:
+            render_material_tree_node(
+                indexes,
+                child,
+                depth + 1,
+            )
 
-    if blocks:
-        attr_indent = tree_indent_fraction(depth) + 0.02
-
-        _, body = st.columns(
-            [attr_indent, 1.0 - attr_indent],
-            gap="small",
-        )
-
-        with body:
-            render_node_all_categories(node)
+        if blocks:
+            attr_indent = tree_indent_fraction(depth) + 0.02
+    
+            _, body = st.columns(
+                [attr_indent, 1.0 - attr_indent],
+                gap="small",
+            )
+    
+            with body:
+                render_node_all_categories(node)
 
 
 def cell_to_display(v: Any) -> Any:
