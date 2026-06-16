@@ -615,26 +615,66 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
         else:
             st.session_state.expanded_material_ids.add(node_id)
 
-RIGHT = 0.28
-indent = tree_indent_fraction(depth)
-
-if indent > 0:
-
-    left_pad, tree_col = st.columns(
-        [indent, 1.0 - indent],
-        gap="small",
-    )
-
-    with tree_col:
-
+    RIGHT = 0.28
+    indent = tree_indent_fraction(depth)
+    
+    if indent > 0:
+    
+        left_pad, tree_col = st.columns(
+            [indent, 1.0 - indent],
+            gap="small",
+        )
+    
+        with tree_col:
+    
+            with st.container(border=True):
+    
+                name_col, ctrl_col = st.columns(
+                    [1.0 - RIGHT, RIGHT],
+                    gap="small",
+                    vertical_alignment="center",
+                )
+    
+                with name_col:
+                    st.button(
+                        label,
+                        key=f"tree_toggle_{node_id}",
+                        type="tertiary",
+                        use_container_width=True,
+                        on_click=toggle_expand,
+                    )
+    
+                with ctrl_col:
+                    c1, c2 = st.columns(2, gap="small")
+    
+                    with c1:
+                        st.checkbox(
+                            "Compare",
+                            value=is_material_in_compare(node_id),
+                            key=cmp_key,
+                            on_change=on_compare_toggle,
+                            args=(node_id, cname, cmp_key),
+                        )
+    
+                    with c2:
+                        st.checkbox(
+                            "BOM",
+                            value=is_in_bill(node_id),
+                            key=bom_key,
+                            on_change=on_bill_toggle,
+                            args=(node_id, bom_key),
+                        )
+    
+    else:
+    
         with st.container(border=True):
-
+    
             name_col, ctrl_col = st.columns(
                 [1.0 - RIGHT, RIGHT],
                 gap="small",
                 vertical_alignment="center",
             )
-
+    
             with name_col:
                 st.button(
                     label,
@@ -643,10 +683,10 @@ if indent > 0:
                     use_container_width=True,
                     on_click=toggle_expand,
                 )
-
+    
             with ctrl_col:
                 c1, c2 = st.columns(2, gap="small")
-
+    
                 with c1:
                     st.checkbox(
                         "Compare",
@@ -655,7 +695,7 @@ if indent > 0:
                         on_change=on_compare_toggle,
                         args=(node_id, cname, cmp_key),
                     )
-
+    
                 with c2:
                     st.checkbox(
                         "BOM",
@@ -664,46 +704,6 @@ if indent > 0:
                         on_change=on_bill_toggle,
                         args=(node_id, bom_key),
                     )
-
-else:
-
-    with st.container(border=True):
-
-        name_col, ctrl_col = st.columns(
-            [1.0 - RIGHT, RIGHT],
-            gap="small",
-            vertical_alignment="center",
-        )
-
-        with name_col:
-            st.button(
-                label,
-                key=f"tree_toggle_{node_id}",
-                type="tertiary",
-                use_container_width=True,
-                on_click=toggle_expand,
-            )
-
-        with ctrl_col:
-            c1, c2 = st.columns(2, gap="small")
-
-            with c1:
-                st.checkbox(
-                    "Compare",
-                    value=is_material_in_compare(node_id),
-                    key=cmp_key,
-                    on_change=on_compare_toggle,
-                    args=(node_id, cname, cmp_key),
-                )
-
-            with c2:
-                st.checkbox(
-                    "BOM",
-                    value=is_in_bill(node_id),
-                    key=bom_key,
-                    on_change=on_bill_toggle,
-                    args=(node_id, bom_key),
-                )
 
     #
     if is_open:
