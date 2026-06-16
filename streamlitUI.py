@@ -1468,11 +1468,12 @@ with st.sidebar:
                 root_id = hit.get("root_id")
                 if not root_id:
                     st.session_state.search_feedback = f"No root found for {label}."
+                #
                 else:
-                    st.session_state.has_searched = True
+                    st.session_state.has_searched = True               
+                    st.session_state.root_indexes = None
                     st.session_state.nav_target_id = hit["id"]
                     st.session_state.path_ids = [root_id]
-                    st.session_state.root_indexes = None
                     st.session_state.expanded_material_ids = set()
                     st.rerun()
 
@@ -1489,7 +1490,7 @@ with st.sidebar:
         st.session_state.root_indexes = None
         st.rerun()
 
-    if st.session_state.has_searched and st.session_state.path_ids:
+    if st.session_state.has_searched:
         root_id = st.session_state.path_ids[0]
         root_rows = fetch_root_subtree(root_id)
         indexes = build_subtree_indexes(root_rows, root_id)
