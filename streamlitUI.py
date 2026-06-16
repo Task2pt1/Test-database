@@ -664,38 +664,18 @@ def render_material_tree_node(
     
         indent_px = depth * 24
     
-        arrow_col, title_col = st.columns(
-            [1, 20],
-            gap="small",
-            vertical_alignment="center",
-        )
-    
-        with arrow_col:
-    
-            st.button(
-                arrow,
-                key=f"tree_toggle_{node_id}",
-                use_container_width=True,
-                on_click=toggle_expand,
-            )
-    
-        with title_col:
-    
-            st.markdown(
-                f"""
-                <div style="
-                    padding-left:{indent_px}px;
-                    font-size:1.1rem;
-                    font-weight:600;
-                    color:white;
-                    padding-top:0.15rem;
-                ">
-                    {label}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-    
+       #
+        arrow = "▼" if is_open else "▶"
+        
+        label = f"{arrow} {title}"
+        
+        if st.button(
+            label,
+            key=f"tree_toggle_{node_id}",
+            use_container_width=True,
+            on_click=toggle_expand,
+        ):
+            pass
     
     if is_open:
     
