@@ -631,13 +631,16 @@ def render_material_tree_node(
             gap="small",
             vertical_alignment="center",
         )
+        #
         with node_box:
-            #
+        
+            display_depth = 0 if depth == 0 else 1
+        
             indent_col, button_col = st.columns(
-                [depth + 1, 20],
+                [display_depth + 1, 20],
                 gap="small",
             )
-            
+        
             with button_col:
                 st.button(
                     label,
