@@ -627,15 +627,17 @@ def render_material_tree_node(
 
     cmp_key = f"cmp_tree_{node_id}"
     bom_key = f"bill_tree_{node_id}"
-    
+    #
     def toggle_expand() -> None:
-        
+
         if node_id in st.session_state.expanded_material_ids:
             st.session_state.expanded_material_ids.discard(node_id)
         else:
             st.session_state.expanded_material_ids.add(node_id)
-            
+    
+    
     with st.container(border=True):
+    
         compare_col, bom_col, _ = st.columns(
             [1, 1, 8],
             gap="small",
@@ -662,45 +664,59 @@ def render_material_tree_node(
     
         indent_px = depth * 24
     
-        st.markdown(
-            f"""
-            <div style="padding-left:{indent_px}px;">
-            """,
-            unsafe_allow_html=True,
-        )
-    
-        #
         arrow_col, title_col = st.columns(
-        [1, 20],
-        gap="small",
-        vertical_alignment="center",
-    )
-    
-    with arrow_col:
-    
-        if st.button(
-            arrow,
-            key=f"tree_toggle_{node_id}",
-            use_container_width=True,
-        ):
-            toggle_expand()
-    
-    with title_col:
-    
-        st.markdown(
-            f"""
-            <div style="
-                font-size:1.1rem;
-                font-weight:600;
-                color:white;
-                padding-top:0.15rem;
-            ">
-                {label}
-            </div>
-            """,
-            unsafe_allow_html=True,
+            [1, 20],
+            gap="small",
+            vertical_alignment="center",
         )
-        
+    
+        with arrow_col:
+    
+            st.button(
+                arrow,
+                key=f"tree_toggle_{node_id}",
+                use_container_width=True,
+                on_click=toggle_expand,
+            )
+    
+        with title_col:
+    
+            st.markdown(
+                f"""
+                <div style="
+                    padding-left:{indent_px}px;
+                    font-size:1.1rem;
+                    font-weight:600;
+                    color:white;
+                    padding-top:0.15rem;
+                ">
+                    {label}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+    
+    
+    if is_open:
+    
+        for child in children:
+            render_material_tree_node(
+                indexes,
+                child,
+                depth + 1,
+            )
+    
+        if blocks:
+    
+            attr_indent = tree_indent_fraction(depth) + 0.02
+    
+            _, body = st.columns(
+                [attr_indent, 1.0 - attr_indent],
+                gap="small",
+            )
+    
+            with body:
+                render_node_all_categories(node)
     if is_open:
         for child in children:
             render_material_tree_node(
