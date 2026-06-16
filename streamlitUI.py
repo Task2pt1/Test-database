@@ -568,7 +568,7 @@ def render_node_all_categories(node: dict[str, Any]) -> None:
         if block_val in (None, "", {}, []):
             continue
         st.markdown(
-    f"#### {block_name}",
+    f"### {block_name}",
 )
         render_nested(None, block_val)
 
@@ -616,54 +616,53 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
             st.session_state.expanded_material_ids.discard(node_id)
         else:
             st.session_state.expanded_material_ids.add(node_id)
-
+    #
     RIGHT = 0.28
-    indent = tree_indent_fraction(depth)
+
+    with st.container(border=True):
     
-    if indent > 0:
+        indent = " " * depth
     
-        left_pad, tree_col = st.columns(
-            [indent, 1.0 - indent],
+        name_col, ctrl_col = st.columns(
+            [1.0 - RIGHT, RIGHT],
             gap="small",
+            vertical_alignment="center",
         )
     
-        with tree_col:
+        with name_col:
+            st.button(
+                indent + label,
+                key=f"tree_toggle_{node_id}",
+                type="tertiary",
+                use_container_width=True,
+                on_click=toggle_expand,
+            )
     
-            with st.container(border=True):
+        with ctrl_col:
     
-                name_col, ctrl_col = st.columns(
-                    [1.0 - RIGHT, RIGHT])
+            c1, c2 = st.columns(
+                [1, 1],
+                gap="small",
+            )
     
-                with name_col:
-                    st.button(
-                        label,
-                        key=f"tree_toggle_{node_id}",
-                        type="tertiary",
-                        use_container_width=True,
-                        on_click=toggle_expand,
-                    )
+            with c1:
+                st.checkbox(
+                    "Compare",
+                    value=is_material_in_compare(node_id),
+                    key=cmp_key,
+                    on_change=on_compare_toggle,
+                    args=(node_id, cname, cmp_key),
+                )
     
-                with ctrl_col:
-                    c1, c2 = st.columns(2, gap="small")
-    
-                    with c1:
-                        st.checkbox(
-                            "Compare",
-                            value=is_material_in_compare(node_id),
-                            key=cmp_key,
-                            on_change=on_compare_toggle,
-                            args=(node_id, cname, cmp_key),
-                        )
-    
-                    with c2:
-                        st.checkbox(
-                            "BOM",
-                            value=is_in_bill(node_id),
-                            key=bom_key,
-                            on_change=on_bill_toggle,
-                            args=(node_id, bom_key),
-                        )
-    
+            with c2:
+                st.checkbox(
+                    "BOM",
+                    value=is_in_bill(node_id),
+                    key=bom_key,
+                    on_change=on_bill_toggle,
+                    args=(node_id, bom_key),
+                )
+    #
     else:
     
         with st.container(border=True):
