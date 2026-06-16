@@ -627,34 +627,30 @@ def render_material_tree_node(
         controls_width = 8
     
         node_box, controls_box = st.columns(
-            [node_width, controls_width],
+            [16, 8],
             gap="small",
             vertical_alignment="center",
         )
         with node_box:
-
+            #
+            indent_px = depth * 30
+            
             st.markdown(
-                """
-                <style>
-                div[data-testid="stButton"] button[kind="tertiary"]{
-                    text-align:left !important;
-                    justify-content:flex-start !important;
-                }
-                </style>
+                f"""
+                <div style="padding-left:{indent_px}px;">
                 """,
                 unsafe_allow_html=True,
             )
-
-            with st.container(border=True):
-
-                st.button(
-                    label,
-                    key=f"tree_toggle_{node_id}",
-                    type="tertiary",
-                    use_container_width=True,
-                    on_click=toggle_expand,
-                )
-
+            
+            st.button(
+                label,
+                key=f"tree_toggle_{node_id}",
+                type="tertiary",
+                use_container_width=True,
+                on_click=toggle_expand,
+            )
+            
+            st.markdown("</div>", unsafe_allow_html=True)
         with controls_box:
 
             with st.container(border=True):
