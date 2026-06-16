@@ -624,47 +624,54 @@ def render_material_tree_node(
     RIGHT = 0.28
 
     #
-    with st.container(border=True):
+    with st.container():
     
-        indent = min(depth * 0.04, 0.30)
+        indent = min(depth * 0.05, 0.30)
     
-        left_pad, node_col, compare_col, bom_col = st.columns(
-            [indent, 0.72 - indent, 0.14, 0.14],
+        left_pad, node_box, controls_box = st.columns(
+            [indent, 0.75 - indent, 0.25],
             gap="small",
             vertical_alignment="center",
         )
     
-        with node_col:
-            st.button(
-                label,
-                key=f"tree_toggle_{node_id}",
-                type="tertiary",
-                use_container_width=True,
-                on_click=toggle_expand,
-            )
+        with node_box:
+            with st.container(border=True):
     
-        with compare_col:
-            st.checkbox(
-                "",
-                value=is_material_in_compare(node_id),
-                key=cmp_key,
-                on_change=on_compare_toggle,
-                args=(node_id, cname, cmp_key),
-                label_visibility="collapsed",
-            )
-            st.caption("Compare")
+                st.button(
+                    label,
+                    key=f"tree_toggle_{node_id}",
+                    type="tertiary",
+                    use_container_width=True,
+                    on_click=toggle_expand,
+                )
     
-        with bom_col:
-            st.checkbox(
-                "",
-                value=is_in_bill(node_id),
-                key=bom_key,
-                on_change=on_bill_toggle,
-                args=(node_id, bom_key),
-                label_visibility="collapsed",
-            )
-            st.caption("BOM")
-        
+        with controls_box:
+            with st.container(border=True):
+    
+                compare_col, bom_col = st.columns(
+                    [1, 1],
+                    gap="small",
+                    vertical_alignment="center",
+                )
+    
+                with compare_col:
+                    st.checkbox(
+                        "Compare",
+                        value=is_material_in_compare(node_id),
+                        key=cmp_key,
+                        on_change=on_compare_toggle,
+                        args=(node_id, cname, cmp_key),
+                    )
+    
+                with bom_col:
+                    st.checkbox(
+                        "BOM",
+                        value=is_in_bill(node_id),
+                        key=bom_key,
+                        on_change=on_bill_toggle,
+                        args=(node_id, bom_key),
+                    )
+            
 
     if is_open:
 
