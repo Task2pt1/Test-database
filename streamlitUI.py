@@ -662,41 +662,42 @@ def render_material_tree_node(
                 args=(node_id, bom_key),
             )
     
-        indent_px = depth * 24
-    
-       #
         arrow = "▼" if is_open else "▶"
-        
-        label = f"{arrow} {title}"
-        
-        if st.button(
+        #
+        label = (
+            f":red[{arrow} {title}]"
+            if is_open
+            else f"{arrow} {title}"
+        )
+    
+        st.button(
             label,
             key=f"tree_toggle_{node_id}",
             use_container_width=True,
             on_click=toggle_expand,
-        ):
-            pass
+        )
     
-    if is_open:
+        if is_open:
     
-        for child in children:
-            render_material_tree_node(
-                indexes,
-                child,
-                depth + 1,
-            )
+            for child in children:
+                render_material_tree_node(
+                    indexes,
+                    child,
+                    depth + 1,
+                )
     
-        if blocks:
+            if blocks:
     
-            attr_indent = tree_indent_fraction(depth) + 0.02
+                attr_indent = tree_indent_fraction(depth) + 0.02
     
-            _, body = st.columns(
-                [attr_indent, 1.0 - attr_indent],
-                gap="small",
-            )
+                _, body = st.columns(
+                    [attr_indent, 1.0 - attr_indent],
+                    gap="small",
+                )
     
-            with body:
-                render_node_all_categories(node)
+                with body:
+                    render_node_all_categories(node)
+        
  
 
 
