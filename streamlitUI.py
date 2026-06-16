@@ -567,7 +567,9 @@ def render_node_all_categories(node: dict[str, Any]) -> None:
         block_val = props[block_name]
         if block_val in (None, "", {}, []):
             continue
-        st.markdown(f"## {block_name}")
+        st.markdown(
+    f"#### {block_name}",
+)
         render_nested(None, block_val)
 
 
@@ -630,10 +632,7 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
             with st.container(border=True):
     
                 name_col, ctrl_col = st.columns(
-                    [1.0 - RIGHT, RIGHT],
-                    gap="small",
-                    vertical_alignment="center",
-                )
+                    [1.0 - RIGHT, RIGHT])
     
                 with name_col:
                     st.button(
