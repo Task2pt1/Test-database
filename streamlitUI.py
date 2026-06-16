@@ -634,16 +634,24 @@ def render_material_tree_node(
             st.session_state.expanded_material_ids.discard(node_id)
         else:
             st.session_state.expanded_material_ids.add(node_id)
-    
-    
+
+    indent_px = depth * 18
+
+    st.markdown(
+        f"""
+        <div style="margin-left:{indent_px}px;">
+        """,
+        unsafe_allow_html=True,
+    )
+
     with st.container(border=True):
-    
+
         compare_col, bom_col, _ = st.columns(
             [1, 1, 8],
             gap="small",
             vertical_alignment="center",
         )
-    
+
         with compare_col:
             st.checkbox(
                 "Compare",
@@ -652,7 +660,7 @@ def render_material_tree_node(
                 on_change=on_compare_toggle,
                 args=(node_id, cname, cmp_key),
             )
-    
+
         with bom_col:
             st.checkbox(
                 "BOM",
@@ -661,44 +669,47 @@ def render_material_tree_node(
                 on_change=on_bill_toggle,
                 args=(node_id, bom_key),
             )
-    
+
         arrow = "▼" if is_open else "▶"
-        #
+
         label = (
             f":red[{arrow} {title}]"
             if is_open
             else f"{arrow} {title}"
         )
-    
+
         st.button(
             label,
             key=f"tree_toggle_{node_id}",
             use_container_width=True,
             on_click=toggle_expand,
         )
-    
+
         if is_open:
-    
+
             for child in children:
                 render_material_tree_node(
                     indexes,
                     child,
                     depth + 1,
                 )
-    
+
             if blocks:
-    
+
                 attr_indent = tree_indent_fraction(depth) + 0.02
-    
+
                 _, body = st.columns(
                     [attr_indent, 1.0 - attr_indent],
                     gap="small",
                 )
-    
+
                 with body:
                     render_node_all_categories(node)
-        
- 
+
+    st.markdown(
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
 
 def cell_to_display(v: Any) -> Any:
