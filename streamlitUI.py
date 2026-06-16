@@ -708,6 +708,7 @@ def cell_to_display(v: Any) -> Any:
 
 
 def render_nested(key: str | None, obj: Any, level: int = 0) -> None:
+
     if obj in (None, "", {}, []):
         return
 
@@ -716,18 +717,34 @@ def render_nested(key: str | None, obj: Any, level: int = 0) -> None:
     # ------------------------------------------------------------------
     if isinstance(obj, list) and obj and all(isinstance(x, dict) for x in obj):
         df = pd.DataFrame(obj)
+
         first = [c for c in ["name", "amount", "unit"] if c in df.columns]
         rest = [c for c in df.columns if c not in first]
+
         df = df[first + rest]
-        st.dataframe(df, use_container_width=True, hide_index=True)
+
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True,
+        )
         return
 
     # ------------------------------------------------------------------
     # SCALAR LIST
     # ------------------------------------------------------------------
-    if isinstance(obj, list) and obj and all(not isinstance(x, (dict, list)) for x in obj):
-        df = pd.DataFrame([{"value": ", ".join(str(x) for x in obj)}])
-        st.dataframe(df, use_container_width=True, hide_index=True)
+    if isinstance(obj, list) and obj and all(
+        not isinstance(x, (dict, list)) for x in obj
+    ):
+        df = pd.DataFrame(
+            [{"value": ", ".join(str(x) for x in obj)}]
+        )
+
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True,
+        )
         return
 
     # ------------------------------------------------------------------
@@ -736,67 +753,128 @@ def render_nested(key: str | None, obj: Any, level: int = 0) -> None:
     if isinstance(obj, dict):
 
         # --------------------------------------------------------------
-        # FLAT DICT
+        # FLAT RECORD
         # --------------------------------------------------------------
-        if all(not isinstance(v, (dict, list)) for v in obj.values()):
+        if all(
+            not isinstance(v, (dict, list))
+            for v in obj.values()
+        ):
             df = pd.DataFrame([obj])
-            st.dataframe(df, use_container_width=True, hide_index=True)
+
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+            )
             return
 
         # --------------------------------------------------------------
-        # DICT OF RECORDS (auto table)
+        # PROPERTY TABLE
         #
-        # {
-        #   "compressive_strength": {"value": 50, "unit": "MPa"},
-        #   "elastic_modulus": {"value": 10, "unit": "GPa"}
-        # }
-        # =>
-        # property | value | unit
+        # compressive_strength -> {value,unit}
+        # density -> {value,unit}
         # --------------------------------------------------------------
-        if obj and all(isinstance(v, dict) for v in obj.values()):
+        if (
+            obj
+            and all(isinstance(v, dict) for v in obj.values())
+            and all(
+                any(
+                    not isinstance(x, (dict, list))
+                    for x in v.values()
+                )
+                for v in obj.values()
+            )
+        ):
+
             rows: list[dict[str, Any]] = []
+
             for prop, record in obj.items():
-                row: dict[str, Any] = {"property": prop}
+
+                row: dict[str, Any] = {
+                    "property": prop
+                }
+
                 for k, v in record.items():
+
                     if isinstance(v, (dict, list)):
-                        row[k] = json.dumps(v, ensure_ascii=False)
+                        row[k] = json.dumps(
+                            v,
+                            ensure_ascii=False,
+                        )
                     else:
                         row[k] = v
+
                 rows.append(row)
 
             df = pd.DataFrame(rows)
 
-            preferred = ["property", "name", "amount", "value", "unit"]
-            cols = [c for c in preferred if c in df.columns] + [c for c in df.columns if c not in preferred]
+            preferred = [
+                "property",
+                "name",
+                "amount",
+                "value",
+                "unit",
+            ]
+
+            cols = (
+                [c for c in preferred if c in df.columns]
+                + [c for c in df.columns if c not in preferred]
+            )
+
             df = df[cols]
 
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+            )
             return
 
         # --------------------------------------------------------------
-        # FALLBACK: recurse children
+        # CONTAINER DICT
+        #
+        # activity
+        #   exchanges
+        #       production
+        #       technosphere
         # --------------------------------------------------------------
         for child_key, child_val in obj.items():
+
             st.markdown(f"#### {child_key}")
-            render_nested(child_key, child_val, level + 1)
+
+            render_nested(
+                child_key,
+                child_val,
+                level + 1,
+            )
+
         return
 
     # ------------------------------------------------------------------
     # MIXED LIST
     # ------------------------------------------------------------------
     if isinstance(obj, list):
+
         for item in obj:
-            render_nested(key, item, level + 1)
+            render_nested(
+                key,
+                item,
+                level + 1,
+            )
+
         return
 
     # ------------------------------------------------------------------
     # FALLBACK
     # ------------------------------------------------------------------
     st.dataframe(
-        pd.DataFrame([{"value": str(obj)}]),
+        pd.DataFrame(
+            [{"value": str(obj)}]
+        ),
         use_container_width=True,
         hide_index=True,
     )
+
 def render_node_blocks(node: dict[str, Any]) -> None:
     blocks = attr_blocks(
         node.get("props"),
