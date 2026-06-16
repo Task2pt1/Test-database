@@ -621,22 +621,32 @@ def render_material_tree_node(
         else:
             st.session_state.expanded_material_ids.add(node_id)
 
-    RIGHT = 0.28
-
-    #
     with st.container():
-    
-        indent = max(1, depth * 2)
+
+        indent = depth * 0.25
 
         left_pad, node_box, controls_box = st.columns(
-            [indent, 18, 6],
+            [indent, 16, 8],
             gap="small",
             vertical_alignment="center",
         )
-    
+
         with node_box:
+
+            st.markdown(
+                """
+                <style>
+                div[data-testid="stButton"] button[kind="tertiary"]{
+                    text-align:left !important;
+                    justify-content:flex-start !important;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
+
             with st.container(border=True):
-    
+
                 st.button(
                     label,
                     key=f"tree_toggle_{node_id}",
@@ -644,16 +654,17 @@ def render_material_tree_node(
                     use_container_width=True,
                     on_click=toggle_expand,
                 )
-    
+
         with controls_box:
+
             with st.container(border=True):
-    
+
                 compare_col, bom_col = st.columns(
                     [1, 1],
-                    gap="small",
+                    gap="medium",
                     vertical_alignment="center",
                 )
-    
+
                 with compare_col:
                     st.checkbox(
                         "Compare",
@@ -662,7 +673,7 @@ def render_material_tree_node(
                         on_change=on_compare_toggle,
                         args=(node_id, cname, cmp_key),
                     )
-    
+
                 with bom_col:
                     st.checkbox(
                         "BOM",
@@ -671,7 +682,6 @@ def render_material_tree_node(
                         on_change=on_bill_toggle,
                         args=(node_id, bom_key),
                     )
-            
 
     if is_open:
 
