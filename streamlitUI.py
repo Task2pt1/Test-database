@@ -620,17 +620,17 @@ def render_material_tree_node(
             st.session_state.expanded_material_ids.discard(node_id)
         else:
             st.session_state.expanded_material_ids.add(node_id)
-
+    #
     with st.container():
-
-        indent = depth * 0.25
-
-        left_pad, node_box, controls_box = st.columns(
-            [indent, 16, 8],
+    
+        node_width = max(4, 16 - depth * 2)
+        controls_width = 8
+    
+        node_box, controls_box = st.columns(
+            [node_width, controls_width],
             gap="small",
             vertical_alignment="center",
         )
-
         with node_box:
 
             st.markdown(
