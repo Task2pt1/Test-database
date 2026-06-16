@@ -631,6 +631,7 @@ def render_material_tree_node(
             st.session_state.expanded_material_ids.discard(node_id)
         else:
             st.session_state.expanded_material_ids.add(node_id)
+            
     with st.container(border=True):
         compare_col, bom_col, _ = st.columns(
             [1, 1, 8],
@@ -676,27 +677,28 @@ def render_material_tree_node(
             "</div>",
             unsafe_allow_html=True,
         )
-
-
-
+    
+    
         for child in children:
             render_material_tree_node(
                 indexes,
                 child,
                 depth + 1,
             )
-
+    
         if blocks:
-
+    
             attr_indent = tree_indent_fraction(depth) + 0.02
-
+    
             _, body = st.columns(
                 [attr_indent, 1.0 - attr_indent],
                 gap="small",
             )
-
+    
             with body:
                 render_node_all_categories(node)
+    
+
 
 
 def cell_to_display(v: Any) -> Any:
