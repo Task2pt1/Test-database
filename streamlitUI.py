@@ -624,61 +624,60 @@ def render_material_tree_node(
 
     cmp_key = f"cmp_tree_{node_id}"
     bom_key = f"bill_tree_{node_id}"
-
+    
     def toggle_expand() -> None:
+        
         if node_id in st.session_state.expanded_material_ids:
             st.session_state.expanded_material_ids.discard(node_id)
         else:
             st.session_state.expanded_material_ids.add(node_id)
-        #
-        with st.container(border=True):
-        
-            compare_col, bom_col, _ = st.columns(
-                [1, 1, 8],
-                gap="small",
-                vertical_alignment="center",
+    with st.container(border=True):
+        compare_col, bom_col, _ = st.columns(
+            [1, 1, 8],
+            gap="small",
+            vertical_alignment="center",
+        )
+    
+        with compare_col:
+            st.checkbox(
+                "Compare",
+                value=is_material_in_compare(node_id),
+                key=cmp_key,
+                on_change=on_compare_toggle,
+                args=(node_id, cname, cmp_key),
             )
-        
-            with compare_col:
-                st.checkbox(
-                    "Compare",
-                    value=is_material_in_compare(node_id),
-                    key=cmp_key,
-                    on_change=on_compare_toggle,
-                    args=(node_id, cname, cmp_key),
-                )
-        
-            with bom_col:
-                st.checkbox(
-                    "BOM",
-                    value=is_in_bill(node_id),
-                    key=bom_key,
-                    on_change=on_bill_toggle,
-                    args=(node_id, bom_key),
-                )
-        
-            indent_px = depth * 24
-        
-            st.markdown(
-                f"""
-                <div style="padding-left:{indent_px}px;">
-                """,
-                unsafe_allow_html=True,
+    
+        with bom_col:
+            st.checkbox(
+                "BOM",
+                value=is_in_bill(node_id),
+                key=bom_key,
+                on_change=on_bill_toggle,
+                args=(node_id, bom_key),
             )
-        
-            st.button(
-                label,
-                key=f"tree_toggle_{node_id}",
-                use_container_width=True,
-                on_click=toggle_expand,
-            )
-        
-            st.markdown(
-                "</div>",
-                unsafe_allow_html=True,
-            )
-    #
-    if is_open:
+    
+        indent_px = depth * 24
+    
+        st.markdown(
+            f"""
+            <div style="padding-left:{indent_px}px;">
+            """,
+            unsafe_allow_html=True,
+        )
+    
+        st.button(
+            label,
+            key=f"tree_toggle_{node_id}",
+            use_container_width=True,
+            on_click=toggle_expand,
+        )
+    
+        st.markdown(
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+
 
         for child in children:
             render_material_tree_node(
