@@ -678,7 +678,7 @@ def render_material_tree_node(
             unsafe_allow_html=True,
         )
     
-    
+    if is_open:
         for child in children:
             render_material_tree_node(
                 indexes,
