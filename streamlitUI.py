@@ -620,7 +620,10 @@ def render_material_tree_node(
     if value_count:
         title += f" [{value_count} values]"
 
-    label = ("▾ " if is_open else "▸ ") + title
+    #
+    label = title
+    arrow = "▼" if is_open else "▶"
+    arrow_color = "#ff4b4b" if is_open else "#ffffff"
 
     cmp_key = f"cmp_tree_{node_id}"
     bom_key = f"bill_tree_{node_id}"
@@ -666,18 +669,38 @@ def render_material_tree_node(
             unsafe_allow_html=True,
         )
     
-        st.button(
-            label,
+        #
+        arrow_col, title_col = st.columns(
+        [1, 20],
+        gap="small",
+        vertical_alignment="center",
+    )
+    
+    with arrow_col:
+    
+        if st.button(
+            arrow,
             key=f"tree_toggle_{node_id}",
             use_container_width=True,
-            on_click=toggle_expand,
-        )
+        ):
+            toggle_expand()
+    
+    with title_col:
     
         st.markdown(
-            "</div>",
+            f"""
+            <div style="
+                font-size:1.1rem;
+                font-weight:600;
+                color:white;
+                padding-top:0.15rem;
+            ">
+                {label}
+            </div>
+            """,
             unsafe_allow_html=True,
         )
-    
+        
     if is_open:
         for child in children:
             render_material_tree_node(
