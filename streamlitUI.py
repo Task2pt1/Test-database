@@ -623,19 +623,20 @@ def render_material_tree_node(
 
     RIGHT = 0.28
 
+    #
     with st.container(border=True):
 
-        indent = " " * depth
-
-        name_col, ctrl_col = st.columns(
-            [1.0 - RIGHT, RIGHT],
+        indent = min(depth * 0.04, 0.30)
+    
+        left_pad, name_col, ctrl_col = st.columns(
+            [indent, 1.0 - RIGHT - indent, RIGHT],
             gap="small",
             vertical_alignment="center",
         )
-
+    
         with name_col:
             st.button(
-                indent + label,
+                label,
                 key=f"tree_toggle_{node_id}",
                 type="tertiary",
                 use_container_width=True,
