@@ -626,10 +626,10 @@ def render_material_tree_node(
     #
     with st.container(border=True):
 
-        indent = min(depth * 0.04, 0.30)
-    
+        indent = min(depth, 12)
+
         left_pad, name_col, ctrl_col = st.columns(
-            [indent, 1.0 - RIGHT - indent, RIGHT],
+            [indent + 1, 12, 4],
             gap="small",
             vertical_alignment="center",
         )
