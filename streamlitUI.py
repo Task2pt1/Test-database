@@ -20,7 +20,7 @@ NODE_LABEL = "Material"
 CHILD_REL = "HAS_CHILD"
 
 ATTR_BLOCKS = (
-    "engineering",f
+    "engineering",
     "activity",
     "lcia",
     "material_cost",
