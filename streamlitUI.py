@@ -1493,10 +1493,26 @@ with st.sidebar:
         root_rows = fetch_root_subtree(root_id)
         indexes = build_subtree_indexes(root_rows, root_id)
         st.session_state.root_indexes = indexes
-
-        target = st.session_state.nav_target_id or st.session_state.path_ids[-1]
+        #
+        target = (
+            st.session_state.nav_target_id
+            or st.session_state.path_ids[-1]
+        )
+        
         if target in indexes["nodes_by_id"]:
-            st.session_state.path_ids = path_to_node(indexes, target)
+        
+            path = path_to_node(
+                indexes,
+                target,
+            )
+        
+            st.session_state.path_ids = path
+        
+            for node_id in path:
+                st.session_state.expanded_material_ids.add(
+                    node_id
+                )
+        
             st.session_state.nav_target_id = None
 
         if apply_filter_auto_dive(indexes):
