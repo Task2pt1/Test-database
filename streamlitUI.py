@@ -694,6 +694,22 @@ def render_nested(key: str | None, obj: Any, level: int = 0) -> None:
     if obj in (None, "", {}, []):
         return
     indent = "&nbsp;" * (level * 6)
+    if (
+        isinstance(obj, list)
+        and obj
+        and all(isinstance(x, dict) for x in obj)
+    ):
+        df = pd.DataFrame(obj)
+        preferred = ["name", "amount", "unit"]
+        ordered = [c for c in preferred if c in df.columns]
+        ordered += [c for c in df.columns if c not in ordered]
+        df = df[ordered]
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True,
+        )
+        return
     if isinstance(obj, dict):
         for k, v in obj.items():
             if isinstance(v, dict):
@@ -722,7 +738,6 @@ def render_nested(key: str | None, obj: Any, level: int = 0) -> None:
         f"{indent}{obj}",
         unsafe_allow_html=True,
     )
-
 
 def render_node_blocks(node: dict[str, Any]) -> None:
     blocks = attr_blocks(
