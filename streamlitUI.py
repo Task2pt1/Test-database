@@ -20,7 +20,7 @@ NODE_LABEL = "Material"
 CHILD_REL = "HAS_CHILD"
 
 ATTR_BLOCKS = (
-    "engineering",
+    "engineering",f
     "activity",
     "lcia",
     "material_cost",
@@ -663,25 +663,27 @@ def render_material_tree_node(indexes: dict[str, Any], node: dict[str, Any], dep
                     args=(node_id, bom_key),
                 )
 
+    #
     if is_open:
 
-        if blocks:
-            attr_indent = tree_indent_fraction(depth) + 0.02
+    for child in children:
+        render_material_tree_node(
+            indexes,
+            child,
+            depth + 1,
+        )
 
-            _, body = st.columns(
-                [attr_indent, 1.0 - attr_indent],
-                gap="small",
-            )
+    if blocks:
+        attr_indent = tree_indent_fraction(depth) + 0.02
 
-            with body:
-                render_node_all_categories(node)
+        _, body = st.columns(
+            [attr_indent, 1.0 - attr_indent],
+            gap="small",
+        )
 
-        for child in children:
-            render_material_tree_node(
-                indexes,
-                child,
-                depth + 1,
-            )
+        with body:
+            render_node_all_categories(node)
+
 
 def cell_to_display(v: Any) -> Any:
     if isinstance(v, (dict, list)):
@@ -1135,32 +1137,27 @@ def html_escape(value: Any) -> str:
 
 def build_bom_dataframe() -> pd.DataFrame:
     bom_rows: list[dict[str, str]] = []
-
     for category in sorted(st.session_state.bom.keys()):
         for item in st.session_state.bom[category]:
             node = fetch_material_node(item["id"])
             if not node:
                 continue
-
             row = {
                 "category": category,
                 "material_id": item["id"],
                 "material_name": item["name"],
             }
-            #
-            for attr_row in flatten_blocks(attr_blocks(node.get("props"))):
+            props = parse_props(node.get("props"))
+            for attr_row in flatten_blocks(props):
                 row[attr_row["attribute"]] = attr_row["value"]
-
             bom_rows.append(row)
-
     if not bom_rows:
         return pd.DataFrame()
-
     bom_df = pd.DataFrame(bom_rows)
     fixed_cols = ["category", "material_id", "material_name"]
-    attr_cols = sorted(c for c in bom_df.columns if c not in fixed_cols)
-    return bom_df[fixed_cols + attr_cols]
+    other_cols = [c for c in bom_df.columns if c not in fixed_cols]
 
+    return bom_df[fixed_cols + sorted(other_cols)]
 
 def filter_bom_dataframe(
     bom_df: pd.DataFrame,
