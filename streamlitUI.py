@@ -717,8 +717,9 @@ def render_nested(key: str | None, obj: Any, level: int = 0) -> None:
     if obj in (None, "", {}, []):
         return
 
-    indent = "&nbsp;" * (level * 6)
-
+    # ------------------------------------------------------------------
+    # LIST OF DICTS
+    # ------------------------------------------------------------------
     if (
         isinstance(obj, list)
         and obj
@@ -737,45 +738,139 @@ def render_nested(key: str | None, obj: Any, level: int = 0) -> None:
             use_container_width=True,
             hide_index=True,
         )
-
         return
 
+    # ------------------------------------------------------------------
+    # SCALAR LIST
+    # ------------------------------------------------------------------
+    if (
+        isinstance(obj, list)
+        and obj
+        and all(not isinstance(x, (dict, list)) for x in obj)
+    ):
+        df = pd.DataFrame(
+            [{"value": ", ".join(str(x) for x in obj)}]
+        )
+
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True,
+        )
+        return
+
+    # ------------------------------------------------------------------
+    # DICT
+    # ------------------------------------------------------------------
     if isinstance(obj, dict):
 
-        for k, v in obj.items():
+        # --------------------------------------------------------------
+        # FLAT DICT
+        # --------------------------------------------------------------
+        if all(
+            not isinstance(v, (dict, list))
+            for v in obj.values()
+        ):
+            df = pd.DataFrame([obj])
 
-            if isinstance(v, dict):
-                st.markdown(
-                    f"{indent}<b>{k}</b>",
-                    unsafe_allow_html=True,
-                )
-                render_nested(k, v, level + 1)
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+            )
+            return
 
-            elif isinstance(v, list):
-                st.markdown(
-                    f"{indent}<b>{k}</b>",
-                    unsafe_allow_html=True,
-                )
-                render_nested(k, v, level + 1)
+        # --------------------------------------------------------------
+        # PROPERTY -> {value, unit}
+        #
+        # engineering style:
+        # {
+        #   compressive_strength:{value:50,unit:"MPa"},
+        #   tensile_strength:{value:4,unit:"MPa"}
+        # }
+        # --------------------------------------------------------------
+        value_unit_rows = []
 
-            else:
-                st.markdown(
-                    f"{indent}{k}: {v}",
-                    unsafe_allow_html=True,
-                )
+        for prop, val in obj.items():
+
+            if not isinstance(val, dict):
+                value_unit_rows = []
+                break
+
+            if "value" not in val:
+                value_unit_rows = []
+                break
+
+            row = {"property": prop}
+
+            for k, v in val.items():
+                if not isinstance(v, (dict, list)):
+                    row[k] = v
+
+            value_unit_rows.append(row)
+
+        if value_unit_rows:
+            df = pd.DataFrame(value_unit_rows)
+
+            cols = (
+                ["property"]
+                + [c for c in ["value", "unit"] if c in df.columns]
+                + [
+                    c
+                    for c in df.columns
+                    if c not in {"property", "value", "unit"}
+                ]
+            )
+
+            df = df[cols]
+
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+            )
+            return
+
+        # --------------------------------------------------------------
+        # STRUCTURED CHILD DICTS
+        #
+        # activity
+        #   production -> dataframe
+        #   technosphere -> dataframe
+        # --------------------------------------------------------------
+        for child_key, child_val in obj.items():
+
+            st.markdown(f"#### {child_key}")
+
+            render_nested(
+                child_key,
+                child_val,
+                level + 1,
+            )
 
         return
 
+    # ------------------------------------------------------------------
+    # MIXED LIST
+    # ------------------------------------------------------------------
     if isinstance(obj, list):
 
         for item in obj:
-            render_nested(key, item, level)
+            render_nested(
+                key,
+                item,
+                level + 1,
+            )
 
         return
 
-    st.markdown(
-        f"{indent}{obj}",
-        unsafe_allow_html=True,
+    # ------------------------------------------------------------------
+    # FALLBACK
+    # ------------------------------------------------------------------
+    st.dataframe(
+        pd.DataFrame([{"value": str(obj)}]),
+        use_container_width=True,
+        hide_index=True,
     )
 
 def render_node_blocks(node: dict[str, Any]) -> None:
