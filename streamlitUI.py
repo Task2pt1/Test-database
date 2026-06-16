@@ -143,6 +143,9 @@ st.markdown(
         margin: 0 !important;
         white-space: nowrap !important;
     }
+    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] .stCheckbox {
+    min-width: 90px !important;
+    }
 
     /* BLOCK F — Attribute headers + plain text */
     .category-section {
