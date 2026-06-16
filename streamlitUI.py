@@ -1500,11 +1500,7 @@ with st.sidebar:
             st.session_state.nav_target_id
             or st.session_state.path_ids[-1]
         )
-        st.write(
-            "TARGET",
-            target,
-            target in indexes["nodes_by_id"],
-        )
+        
         if target in indexes["nodes_by_id"]:
         
             path = path_to_node(
