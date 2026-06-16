@@ -176,7 +176,17 @@ st.markdown(
     [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] {
         margin-bottom: 0.15rem !important;
     }
-
+    /* Make tree node buttons left-aligned (stop the floating centered label) */
+    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] button[kind="tertiary"] {
+        justify-content: flex-start !important;
+        text-align: left !important;
+    }
+    
+    /* Also force any nested label containers left */
+    [data-testid="stMain"] div[data-testid="stVerticalBlockBorderWrapper"] button[kind="tertiary"] * {
+        justify-content: flex-start !important;
+        text-align: left !important;
+    }
     
     </style>
     """,
@@ -636,7 +646,7 @@ def render_material_tree_node(
         
             with st.container(border=True):
         
-                indent_px = min(depth, 1) * 30
+                indent_px = depth * 24
         
                 st.markdown(
                     f"""
@@ -713,50 +723,26 @@ def cell_to_display(v: Any) -> Any:
 
 
 def render_nested(key: str | None, obj: Any, level: int = 0) -> None:
-
     if obj in (None, "", {}, []):
         return
 
     # ------------------------------------------------------------------
     # LIST OF DICTS
     # ------------------------------------------------------------------
-    if (
-        isinstance(obj, list)
-        and obj
-        and all(isinstance(x, dict) for x in obj)
-    ):
-
+    if isinstance(obj, list) and obj and all(isinstance(x, dict) for x in obj):
         df = pd.DataFrame(obj)
-
         first = [c for c in ["name", "amount", "unit"] if c in df.columns]
         rest = [c for c in df.columns if c not in first]
-
         df = df[first + rest]
-
-        st.dataframe(
-            df,
-            use_container_width=True,
-            hide_index=True,
-        )
+        st.dataframe(df, use_container_width=True, hide_index=True)
         return
 
     # ------------------------------------------------------------------
     # SCALAR LIST
     # ------------------------------------------------------------------
-    if (
-        isinstance(obj, list)
-        and obj
-        and all(not isinstance(x, (dict, list)) for x in obj)
-    ):
-        df = pd.DataFrame(
-            [{"value": ", ".join(str(x) for x in obj)}]
-        )
-
-        st.dataframe(
-            df,
-            use_container_width=True,
-            hide_index=True,
-        )
+    if isinstance(obj, list) and obj and all(not isinstance(x, (dict, list)) for x in obj):
+        df = pd.DataFrame([{"value": ", ".join(str(x) for x in obj)}])
+        st.dataframe(df, use_container_width=True, hide_index=True)
         return
 
     # ------------------------------------------------------------------
@@ -767,101 +753,55 @@ def render_nested(key: str | None, obj: Any, level: int = 0) -> None:
         # --------------------------------------------------------------
         # FLAT DICT
         # --------------------------------------------------------------
-        if all(
-            not isinstance(v, (dict, list))
-            for v in obj.values()
-        ):
+        if all(not isinstance(v, (dict, list)) for v in obj.values()):
             df = pd.DataFrame([obj])
-
-            st.dataframe(
-                df,
-                use_container_width=True,
-                hide_index=True,
-            )
+            st.dataframe(df, use_container_width=True, hide_index=True)
             return
 
         # --------------------------------------------------------------
-        # PROPERTY -> {value, unit}
+        # DICT OF RECORDS (auto table)
         #
-        # engineering style:
         # {
-        #   compressive_strength:{value:50,unit:"MPa"},
-        #   tensile_strength:{value:4,unit:"MPa"}
+        #   "compressive_strength": {"value": 50, "unit": "MPa"},
+        #   "elastic_modulus": {"value": 10, "unit": "GPa"}
         # }
+        # =>
+        # property | value | unit
         # --------------------------------------------------------------
-        value_unit_rows = []
+        if obj and all(isinstance(v, dict) for v in obj.values()):
+            rows: list[dict[str, Any]] = []
+            for prop, record in obj.items():
+                row: dict[str, Any] = {"property": prop}
+                for k, v in record.items():
+                    if isinstance(v, (dict, list)):
+                        row[k] = json.dumps(v, ensure_ascii=False)
+                    else:
+                        row[k] = v
+                rows.append(row)
 
-        for prop, val in obj.items():
+            df = pd.DataFrame(rows)
 
-            if not isinstance(val, dict):
-                value_unit_rows = []
-                break
-
-            if "value" not in val:
-                value_unit_rows = []
-                break
-
-            row = {"property": prop}
-
-            for k, v in val.items():
-                if not isinstance(v, (dict, list)):
-                    row[k] = v
-
-            value_unit_rows.append(row)
-
-        if value_unit_rows:
-            df = pd.DataFrame(value_unit_rows)
-
-            cols = (
-                ["property"]
-                + [c for c in ["value", "unit"] if c in df.columns]
-                + [
-                    c
-                    for c in df.columns
-                    if c not in {"property", "value", "unit"}
-                ]
-            )
-
+            preferred = ["property", "name", "amount", "value", "unit"]
+            cols = [c for c in preferred if c in df.columns] + [c for c in df.columns if c not in preferred]
             df = df[cols]
 
-            st.dataframe(
-                df,
-                use_container_width=True,
-                hide_index=True,
-            )
+            st.dataframe(df, use_container_width=True, hide_index=True)
             return
 
         # --------------------------------------------------------------
-        # STRUCTURED CHILD DICTS
-        #
-        # activity
-        #   production -> dataframe
-        #   technosphere -> dataframe
+        # FALLBACK: recurse children
         # --------------------------------------------------------------
         for child_key, child_val in obj.items():
-
             st.markdown(f"#### {child_key}")
-
-            render_nested(
-                child_key,
-                child_val,
-                level + 1,
-            )
-
+            render_nested(child_key, child_val, level + 1)
         return
 
     # ------------------------------------------------------------------
     # MIXED LIST
     # ------------------------------------------------------------------
     if isinstance(obj, list):
-
         for item in obj:
-            render_nested(
-                key,
-                item,
-                level + 1,
-            )
-
+            render_nested(key, item, level + 1)
         return
 
     # ------------------------------------------------------------------
@@ -872,7 +812,6 @@ def render_nested(key: str | None, obj: Any, level: int = 0) -> None:
         use_container_width=True,
         hide_index=True,
     )
-
 def render_node_blocks(node: dict[str, Any]) -> None:
     blocks = attr_blocks(
         node.get("props"),
