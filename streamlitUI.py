@@ -1743,33 +1743,6 @@ with st.sidebar:
         st.session_state.expanded_material_ids = set()
         st.rerun()
     st.header("Navigation")
-
-    if st.button("Submit data", use_container_width=True):
-        st.query_params["page"] = "submit"
-        st.rerun()
-    if st.query_params.get("page") == "submit":
-        st.divider()
-        st.markdown("### Submit data")
-        st.markdown("[`Task2pt1/all_tasks_data`](https://github.com/Task2pt1/all_tasks_data) (private repo)")
-
-        email = st.text_input("Email", placeholder="name@domain.com")
-        gh_user = st.text_input("GitHub username", placeholder="your-username")
-
-        st.caption("Submit via PR to: `incoming/<team>/<YYYY-MM-DD>/` (example: `incoming/walls/2026-06-17/bom.csv`).")
-
-        if st.button("Copy instructions"):
-            st.code(
-                "Repo: https://github.com/Task2pt1/all_tasks_data\n"
-                "Submit PR with file at: incoming/<team>/<YYYY-MM-DD>/\n"
-                "Include: Category, Name, Quantity, Unit, Source (Parent optional)\n"
-                "Formats: Word/txt/Pages/PDF, spreadsheet, or data-lake link\n"
-                "Access request: email Lumin with your GitHub username"
-            )
-
-        if st.button("Back"):
-            st.query_params["page"] = "browse"
-            st.rerun()
-
     
     with st.form("global_material_search", clear_on_submit=False):
         search_query = st.text_input("query", placeholder="", label_visibility="collapsed")
@@ -1932,8 +1905,9 @@ subtree = get_subtree_rows_from_indexes(current_id, indexes)
 # =============================================================================
 # SECTION 14 — MAIN TABS
 # =============================================================================
-tab_path, tab_compare, tab_bom = st.tabs(
-    ["Path + explore", "Compare", "Export BOM"])
+tab_path, tab_compare, tab_bom, tab_submit = st.tabs(
+    ["Path + explore", "Compare", "Export BOM", "Submit data"]
+)
 
 # --- TAB 1 ---
 
@@ -2083,3 +2057,23 @@ with tab_bom:
             file_name=bom_export_name,
             mime="text/csv",
         )
+
+
+# ---tab 4 ---
+
+
+with tab_submit:
+    st.subheader("Submit data")
+    st.markdown(
+        "Private repo: [`Task2pt1/all_tasks_data`](https://github.com/Task2pt1/all_tasks_data)"
+    )
+    st.markdown(
+        "Submit a Pull Request to `incoming/<team>/<YYYY-MM-DD>/` "
+        "(example: `incoming/walls/2026-06-17/bom.csv`)."
+    )
+    st.markdown(
+        "**Required:** category, name, quantity, unit, source  \n"
+        "**Optional:** parent, synonyms, standards, region, engineering, LCA, transport, LCIA, cost  \n"
+        "**Formats:** Word / txt / Pages / PDF, spreadsheet, or data-lake link"
+    )
+    st.markdown("**Access:** email Lumin your GitHub username + email to be added to the private repo.")
