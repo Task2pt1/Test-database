@@ -439,10 +439,10 @@ def build_submit_indexes() -> dict[str, Any]:
             "name": "User participation",
             "participation": {
                 "questions": [
-                    "What is your email address?",
-                    "What is your GitHub username?",
-                    "What is your team name?",
-                    "What is your name?",
+                    "Email address",
+                    "Your name",
+                    "Data title",
+                    "File",
                 ]
             },
         },
@@ -1962,36 +1962,23 @@ subtree = get_subtree_rows_from_indexes(current_id, indexes)
 # =============================================================================
 
 if current_id == SUBMIT_MATERIAL_ID:
-    st.session_state.active_main_tab = "Submit data"
+    tab_submit, tab_path, tab_compare, tab_bom = st.tabs(
+        ["Submit data", "Path + explore", "Compare", "Export BOM"]
+    )
+else:
+    tab_path, tab_compare, tab_bom, tab_submit = st.tabs(
+        ["Path + explore", "Compare", "Export BOM", "Submit data"]
+    )
 
-tab_names = ["Path + explore", "Compare", "Export BOM", "Submit data"]
-
-if current_id == SUBMIT_MATERIAL_ID:
-    st.session_state.active_main_tab = "Submit data"
-
-tab_names = ["Path + explore", "Compare", "Export BOM", "Submit data"]
-
-if st.session_state.active_main_tab not in tab_names:
-    st.session_state.active_main_tab = "Path + explore"
-
-st.session_state.active_main_tab = st.radio(
-    "View",
-    tab_names,
-    index=tab_names.index(st.session_state.active_main_tab),
-    horizontal=True,
-    label_visibility="collapsed",
-    key="main_view_radio",
-)
-
-if st.session_state.active_main_tab == "Path + explore":
+with tab_path:
     if current_id == SUBMIT_MATERIAL_ID:
-        st.info("You are in Submit data mode.")
+        st.info("Use the **Submit data** tab.")
     else:
         root_id = st.session_state.path_ids[0]
         root_node = indexes["nodes_by_id"][root_id]
         render_material_tree_node(indexes, root_node, depth=0, path_ids=[])
 
-elif st.session_state.active_main_tab == "Compare":
+with tab_compare:
     st.subheader("Compare materials")
 
     if len(st.session_state.compare_materials) < 2:
@@ -2042,7 +2029,7 @@ elif st.session_state.active_main_tab == "Compare":
         else:
             render_material_compare(compare_material_nodes)
 
-elif st.session_state.active_main_tab == "Export BOM":
+with tab_bom:
     st.subheader("Export BOM")
 
     bom_df = build_bom_dataframe()
@@ -2109,19 +2096,65 @@ elif st.session_state.active_main_tab == "Export BOM":
             mime="text/csv",
         )
 
-elif st.session_state.active_main_tab == "Submit data":
+with tab_submit:
     if current_id == SUBMIT_MATERIAL_ID:
-        props = parse_props(node.get("props"))
-        questions = props.get("participation", {}).get(
-            "questions",
-            ["What is your email address?"],
-        )
         st.subheader("Submit data")
-        for i, question in enumerate(questions):
-            st.session_state.submit_answers[question] = st.text_input(
-                question,
-                value=st.session_state.submit_answers.get(question, ""),
-                key=f"submit_answer_{i}",
+        st.caption(
+            "Enter your approved email, your name, what this data is, "
+            "and attach a file."
+        )
+
+        with st.form("submit_data_form", clear_on_submit=False):
+            email = st.text_input("Email")
+            name = st.text_input("Name")
+            title = st.text_input("Title (which data is this?)")
+            comments = st.text_area("Comments (optional)", height=100)
+            upload = st.file_uploader(
+                "File",
+                type=["csv", "txt", "pdf", "xlsx", "xls", "json"],
             )
+            sent = st.form_submit_button("Submit")
+
+        if sent:
+            email_clean = email.strip().lower()
+            name_clean = name.strip()
+            title_clean = title.strip()
+            comments_clean = comments.strip()
+
+            allowed = [
+                e.strip().lower()
+                for e in st.secrets.get("ALLOWED_EMAILS", [])
+            ]
+
+            if not email_clean:
+                st.error("Enter your email address.")
+            elif email_clean not in allowed:
+                st.error(
+                    "This email is not approved yet. Contact Lumin."
+                )
+            elif not name_clean:
+                st.error("Enter your name.")
+            elif not title_clean:
+                st.error("Enter a title describing which data this is.")
+            elif upload is None:
+                st.error("Attach a file.")
+            else:
+                st.session_state.last_submission = {
+                    "email": email_clean,
+                    "name": name_clean,
+                    "title": title_clean,
+                    "comments": comments_clean,
+                    "filename": upload.name,
+                    "bytes": upload.getvalue(),
+                }
+                st.success("Submitted.")
+                st.markdown(
+                    f"**Name:** {name_clean}  \n"
+                    f"**Email:** {email_clean}  \n"
+                    f"**Title:** {title_clean}  \n"
+                    f"**File:** {upload.name}"
+                )
+                if comments_clean:
+                    st.markdown(f"**Comments:** {comments_clean}")
     else:
         st.info("Click **Add data** in the sidebar to start.")
