@@ -1103,9 +1103,67 @@ def render_material_compare(
     materials: list[dict[str, Any]]
 ) -> None:
 
-    if not materials:
-        st.info("No comparable materials found.")
-        return
+    def collect_compare_values(
+        obj: Any,
+        prefix: str,
+        out: dict[str, list[str]],
+    ) -> None:
+
+        if obj in (None, "", {}, []):
+            return
+
+        if isinstance(obj, dict):
+
+            if "value" in obj:
+                value = str(obj["value"])
+
+                if obj.get("unit"):
+                    value += f" {obj['unit']}"
+
+                out.setdefault(prefix, []).append(value)
+                return
+
+            for k, v in obj.items():
+
+                if k in {
+                    "id",
+                    "code",
+                    "vector",
+                    "placement",
+                    "name",
+                }:
+                    continue
+
+                child = (
+                    f"{prefix}.{k}"
+                    if prefix
+                    else k
+                )
+
+                collect_compare_values(
+                    v,
+                    child,
+                    out,
+                )
+
+            return
+
+        if isinstance(obj, list):
+
+            for item in obj:
+
+                collect_compare_values(
+                    item,
+                    prefix,
+                    out,
+                )
+
+            return
+
+        out.setdefault(
+            prefix,
+            []
+        ).append(str(obj))
 
     # ==========================================================
     # ENGINEERING
@@ -1292,6 +1350,95 @@ def render_material_compare(
                 hide_index=True,
                 height=350,
             )
+ ###
+    material_maps = {}
+
+    all_attributes = set()
+
+    for material in materials:
+
+        values = {}
+
+        collect_compare_values(
+            material["props"],
+            "",
+            values,
+        )
+
+        material_maps[
+            material["name"]
+        ] = values
+
+        all_attributes.update(
+            values.keys()
+        )
+
+    common_attributes = []
+    unique_attributes = []
+
+    for attr in sorted(all_attributes):
+
+        present_count = sum(
+            1
+            for material_name in material_maps
+            if attr in material_maps[material_name]
+        )
+
+        if present_count == len(material_maps):
+            common_attributes.append(attr)
+        else:
+            unique_attributes.append(attr)
+
+    ordered_attributes = (
+        common_attributes
+        + unique_attributes
+    )
+
+    compare_rows = []
+
+    for attr in ordered_attributes:
+
+        row = {
+            "Attribute": (
+                attr.replace("_", " ")
+                .replace(".", " → ")
+                .title()
+            )
+        }
+
+        for material_name in material_maps:
+
+            values = material_maps[
+                material_name
+            ].get(
+                attr,
+                [],
+            )
+
+            row[
+                material_name
+            ] = "\n".join(
+                str(v)
+                for v in values
+            )
+
+        compare_rows.append(row)
+
+    df = pd.DataFrame(compare_rows)
+
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        height=900,
+    )
+
+    st.download_button(
+        "Download comparison (CSV)",
+        df.to_csv(index=False),
+        file_name="material_comparison.csv",
+        mime="text/csv",
+    )
 
 
 def on_nav_child(child_id: str) -> None:
