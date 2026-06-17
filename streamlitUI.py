@@ -1099,112 +1099,200 @@ def on_compare_toggle(material_id: str, material_name: str, widget_key: str) -> 
             st.session_state.show_compare_view = False
 
 
+def render_material_compare(
+    materials: list[dict[str, Any]]
+) -> None:
 
-def render_parts_compare(parts: list[dict[str, str]]) -> None:
-
-    if not parts:
-        st.info("No comparable attributes found.")
+    if not materials:
+        st.info("No comparable materials found.")
         return
 
-    rows_by_material = defaultdict(dict)
-    material_names = {}
+    # ==========================================================
+    # ENGINEERING
+    # ==========================================================
 
-    for part in parts:
+    st.markdown("### Engineering")
 
-        material_id = part["material_id"]
+    engineering_rows = {}
 
-        material_names[material_id] = part["material_name"]
+    for material in materials:
 
-        rows_by_material[material_id][part["attribute"]] = {
-            "value": part.get("value", ""),
-            "unit": part.get("unit", ""),
-        }
+        material_name = material["name"]
 
-    ordered_material_ids = list(material_names.keys())
-
-    all_attributes = sorted(
-        {
-            attr
-            for mid in ordered_material_ids
-            for attr in rows_by_material[mid]
-        }
-    )
-
-    if not all_attributes:
-        st.info("No comparable attributes found.")
-        return
-
-    common_attributes = []
-    unique_attributes = []
-
-    for attr in all_attributes:
-
-        present_count = sum(
-            1
-            for mid in ordered_material_ids
-            if attr in rows_by_material[mid]
+        engineering = material["props"].get(
+            "engineering",
+            {}
         )
 
-        if present_count == len(ordered_material_ids):
-            common_attributes.append(attr)
-        else:
-            unique_attributes.append(attr)
+        rows = flatten_blocks(
+            {"engineering": engineering},
+            combine_value_unit=True,
+        )
 
-    ordered_attributes = common_attributes + unique_attributes
+        for row in rows:
 
-    compare_rows = []
-
-    for attr in ordered_attributes:
-
-        first_unit = ""
-
-        for mid in ordered_material_ids:
-
-            cell = rows_by_material[mid].get(attr)
-
-            if cell and cell.get("unit"):
-                first_unit = cell["unit"]
-                break
-
-        row = {
-            "Attribute": (
-                attr.split(".")[-1]
-                .replace("_", " ")
-                .title()
-            ),
-            "Unit": first_unit,
-        }
-
-        for mid in ordered_material_ids:
-
-            cell = rows_by_material[mid].get(attr)
-
-            row[
-                material_names[mid]
-            ] = (
-                cell["value"]
-                if cell
-                else ""
+            attr = (
+                row["attribute"]
+                .replace("engineering.", "")
             )
 
-        compare_rows.append(row)
+            if attr not in engineering_rows:
+                engineering_rows[attr] = {
+                    "Attribute": attr.split(".")[-1]
+                    .replace("_", " ")
+                    .title()
+                }
 
-    df = pd.DataFrame(compare_rows)
+            engineering_rows[attr][material_name] = row["value"]
 
-    st.dataframe(
-        df,
-        use_container_width=True,
-        hide_index=True,
-        height=900,
-    )
+    if engineering_rows:
 
-    st.download_button(
-        "Download comparison (CSV)",
-        df.to_csv(index=False),
-        file_name="material_comparison.csv",
-        mime="text/csv",
-    )
-    #end compare box
+        engineering_df = pd.DataFrame(
+            engineering_rows.values()
+        )
+
+        st.dataframe(
+            engineering_df,
+            use_container_width=True,
+            hide_index=True,
+            height=400,
+        )
+
+    # ==========================================================
+    # LCIA
+    # ==========================================================
+
+    st.markdown("### LCIA")
+
+    lcia_rows = {}
+
+    for material in materials:
+
+        material_name = material["name"]
+
+        lcia = material["props"].get(
+            "lcia",
+            {}
+        )
+
+        rows = flatten_blocks(
+            {"lcia": lcia},
+            combine_value_unit=True,
+        )
+
+        for row in rows:
+
+            attr = (
+                row["attribute"]
+                .replace("lcia.", "")
+            )
+
+            if attr not in lcia_rows:
+                lcia_rows[attr] = {
+                    "Attribute": attr.split(".")[-1]
+                    .replace("_", " ")
+                    .title()
+                }
+
+            lcia_rows[attr][material_name] = row["value"]
+
+    if lcia_rows:
+
+        lcia_df = pd.DataFrame(
+            lcia_rows.values()
+        )
+
+        st.dataframe(
+            lcia_df,
+            use_container_width=True,
+            hide_index=True,
+            height=400,
+        )
+
+    # ==========================================================
+    # ACTIVITY
+    # ==========================================================
+
+    st.markdown("### Activity")
+
+    exchange_types = [
+        "production",
+        "technosphere",
+        "biosphere",
+        "transport",
+        "cost",
+    ]
+
+    for exchange_type in exchange_types:
+
+        inventory_rows = {}
+
+        for material in materials:
+
+            material_name = material["name"]
+
+            exchanges = (
+                material["props"]
+                .get("activity", {})
+                .get("exchanges", {})
+            )
+
+            inventory = exchanges.get(
+                exchange_type,
+                []
+            )
+
+            if isinstance(inventory, dict):
+                inventory = [inventory]
+
+            for record in inventory:
+
+                if not isinstance(record, dict):
+                    continue
+
+                row_name = (
+                    record.get("name")
+                    or record.get("input")
+                    or record.get("flow")
+                    or "Unnamed"
+                )
+
+                if row_name not in inventory_rows:
+
+                    inventory_rows[row_name] = {
+                        "Name": row_name,
+                        "Unit": record.get(
+                            "unit",
+                            "",
+                        ),
+                    }
+
+                amount = record.get(
+                    "amount",
+                    ""
+                )
+
+                inventory_rows[row_name][
+                    material_name
+                ] = amount
+
+        if inventory_rows:
+
+            st.markdown(
+                f"#### {exchange_type.title()}"
+            )
+
+            inventory_df = pd.DataFrame(
+                inventory_rows.values()
+            )
+
+            st.dataframe(
+                inventory_df,
+                use_container_width=True,
+                hide_index=True,
+                height=350,
+            )
+
 
 def on_nav_child(child_id: str) -> None:
     indexes = st.session_state.get("root_indexes")
@@ -1644,10 +1732,12 @@ with tab_compare:
     st.subheader("Compare materials")
 
     if len(st.session_state.compare_materials) < 2:
+
         branch = summarize_branch(indexes, current_id)
 
         if branch["direct_child_count"] == 0:
             st.info("Select at least 2 materials with the Compare checkbox.")
+
         else:
             st.info(
                 f"{node_name(node)} is a category node with "
@@ -1656,7 +1746,9 @@ with tab_compare:
             )
 
             if branch["populated_direct_children"]:
+
                 if st.button("Compare direct submaterials"):
+
                     st.session_state.compare_materials = [
                         {
                             "id": child["id"],
@@ -1665,37 +1757,48 @@ with tab_compare:
                         }
                         for child in branch["populated_direct_children"]
                     ]
+
                     st.rerun()
+
             else:
-                st.caption("No direct submaterials under this node have comparable values.")
+                st.caption(
+                    "No direct submaterials under this node have comparable values."
+                )
+
     else:
-        compare_parts: list[dict[str, str]] = []
+
+        compare_material_nodes = []
 
         for material in st.session_state.compare_materials:
-            material_node = fetch_material_node(material["id"])
+
+            material_node = fetch_material_node(
+                material["id"]
+            )
+
             if not material_node:
                 continue
 
-            attr_rows = flatten_blocks(
-                attr_blocks(material_node.get("props")),
-                combine_value_unit=True,
+            compare_material_nodes.append(
+                {
+                    "id": material["id"],
+                    "name": material["name"],
+                    "props": parse_props(
+                        material_node.get("props")
+                    ),
+                }
             )
-            for attr_row in attr_rows:
-                compare_parts.append(
-                    {
-                        "key": part_compare_key(material["id"], attr_row["attribute"]),
-                        "material_id": material["id"],
-                        "material_name": material["name"],
-                        "attribute": attr_row["attribute"],
-                        "value": attr_row["value"],
-                    }
-                )
 
-        if not compare_parts:
-            st.info("No comparable attributes found for the selected materials.")
+        if not compare_material_nodes:
+
+            st.info(
+                "No comparable materials found."
+            )
+
         else:
-            render_parts_compare(compare_parts)
 
+            render_material_compare(
+                compare_material_nodes
+            )
 
 # --- TAB 3 ---
 with tab_bom:
