@@ -638,7 +638,7 @@ def render_material_tree_node(
         else:
             st.session_state.expanded_material_ids.add(node_id)
 
-    indent_px = depth * 78
+    indent_px = depth * 178
 
     st.markdown(
         f"""
