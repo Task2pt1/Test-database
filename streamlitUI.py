@@ -1913,13 +1913,6 @@ if has_material:
     direct_children = indexes["children_by_parent"].get(current_id, [])
     subtree = get_subtree_rows_from_indexes(current_id, indexes)
     
-
-# =============================================================================
-# SECTION 14 — MAIN TABS
-# =============================================================================
-tab_path, tab_compare, tab_bom, tab_submit = st.tabs(
-    ["Path + explore", "Compare", "Export BOM", "Submit data"]
-)
 # =============================================================================
 # SECTION 14 — MAIN TABS
 # =============================================================================
@@ -1949,19 +1942,19 @@ if st.session_state.show_submit_tab and not has_material:
     )
     st.markdown(
         "**Required:** category, name, quantity, unit, source  \n"
-        "**Optional:** parent, synonyms, standards, region, engineering, LCA, transport, LCIA, cost"
+        "**Optional:** parent, synonyms, standards, region, engineering, LCA, transport, LCIA, cost  \n"
+        "**Formats:** Word / txt / Pages / PDF, spreadsheet, or data-lake link"
     )
     st.stop()
 
 tab_path, tab_compare, tab_bom, tab_submit = st.tabs(
     ["Path + explore", "Compare", "Export BOM", "Submit data"]
 )
-# --- TAB 1 ---
 
+# --- TAB 1 ---
 with tab_path:
     root_id = st.session_state.path_ids[0]
     root_node = indexes["nodes_by_id"][root_id]
-
     render_material_tree_node(indexes, root_node, depth=0, path_ids=[])
 
 # --- TAB 2 ---
@@ -1969,12 +1962,10 @@ with tab_compare:
     st.subheader("Compare materials")
 
     if len(st.session_state.compare_materials) < 2:
-
         branch = summarize_branch(indexes, current_id)
 
         if branch["direct_child_count"] == 0:
             st.info("Select at least 2 materials with the Compare checkbox.")
-
         else:
             st.info(
                 f"{node_name(node)} is a category node with "
@@ -1983,9 +1974,7 @@ with tab_compare:
             )
 
             if branch["populated_direct_children"]:
-
                 if st.button("Compare direct submaterials"):
-
                     st.session_state.compare_materials = [
                         {
                             "id": child["id"],
@@ -1994,24 +1983,16 @@ with tab_compare:
                         }
                         for child in branch["populated_direct_children"]
                     ]
-
                     st.rerun()
-
             else:
                 st.caption(
                     "No direct submaterials under this node have comparable values."
                 )
-
     else:
-
         compare_material_nodes = []
 
         for material in st.session_state.compare_materials:
-
-            material_node = fetch_material_node(
-                material["id"]
-            )
-
+            material_node = fetch_material_node(material["id"])
             if not material_node:
                 continue
 
@@ -2019,23 +2000,14 @@ with tab_compare:
                 {
                     "id": material["id"],
                     "name": material["name"],
-                    "props": parse_props(
-                        material_node.get("props")
-                    ),
+                    "props": parse_props(material_node.get("props")),
                 }
             )
 
         if not compare_material_nodes:
-
-            st.info(
-                "No comparable materials found."
-            )
-
+            st.info("No comparable materials found.")
         else:
-
-            render_material_compare(
-                compare_material_nodes
-            )
+            render_material_compare(compare_material_nodes)
 
 # --- TAB 3 ---
 with tab_bom:
@@ -2105,10 +2077,7 @@ with tab_bom:
             mime="text/csv",
         )
 
-
-# ---tab 4 ---
-
-
+# --- TAB 4 ---
 with tab_submit:
     st.subheader("Submit data")
 
@@ -2117,6 +2086,7 @@ with tab_submit:
         value=st.session_state.submit_email,
         placeholder="you@university.edu",
     )
+
     st.markdown(
         "Private repo: [`Task2pt1/all_tasks_data`](https://github.com/Task2pt1/all_tasks_data)"
     )
