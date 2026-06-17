@@ -711,7 +711,7 @@ def render_material_tree_node(
             for child in children:
             
                 spacer, child_col = st.columns(
-                    [0.06 * (depth + 1), 1.0 - (0.05 * (depth + 1))]
+                    [0.05 * (depth + 1), 1.0 - (0.05 * (depth + 1))]
                 )
             
                 with child_col:
