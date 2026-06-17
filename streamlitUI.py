@@ -2206,7 +2206,8 @@ with tab_submit:
                 e.strip().lower()
                 for e in st.secrets.get("ALLOWED_EMAILS", [])
             ]
-
+            st.write("EMAIL_CLEAN =", repr(email_clean))
+            st.write("ALLOWED =", repr(allowed))
             if not email_clean:
                 st.error("Enter your email address.")
             elif email_clean not in allowed:
