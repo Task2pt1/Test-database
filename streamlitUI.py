@@ -1472,6 +1472,26 @@ def tree_node_visible(indexes: dict[str, Any], node_id: str) -> bool:
 # =============================================================================
 # SECTION 8 — BOM HELPERS
 # =============================================================================
+def collect_subtree_ids(
+    indexes: dict[str, Any],
+    node_id: str,
+) -> list[str]:
+
+    ids = [node_id]
+
+    for child in indexes["children_by_parent"].get(
+        node_id,
+        [],
+    ):
+        ids.extend(
+            collect_subtree_ids(
+                indexes,
+                child["id"],
+            )
+        )
+
+    return ids
+    
 def is_in_bill(material_id: str) -> bool:
     for items in st.session_state.bom.values():
         if any(b["id"] == material_id for b in items):
@@ -1498,18 +1518,63 @@ def remove_from_bill(material_id: str) -> None:
             del st.session_state.bom[cat]
 
 
-def on_bill_toggle(material_id: str, widget_key: str) -> None:
-    indexes = st.session_state.get("root_indexes")
+def on_bill_toggle(
+    material_id: str,
+    widget_key: str,
+) -> None:
+
+    indexes = st.session_state.get(
+        "root_indexes"
+    )
+
     if not indexes:
         return
 
-    if st.session_state[widget_key]:
-        node = indexes["nodes_by_id"].get(material_id)
-        if node:
-            add_to_bill_from_node(node, indexes["root_name"])
-    else:
-        remove_from_bill(material_id)
+    checked = st.session_state[widget_key]
 
+    children = indexes[
+        "children_by_parent"
+    ].get(
+        material_id,
+        [],
+    )
+
+    if children:
+
+        subtree_ids = collect_subtree_ids(
+            indexes,
+            material_id,
+        )
+
+        for nid in subtree_ids:
+
+            node = indexes["nodes_by_id"][nid]
+
+            if checked:
+                add_to_bill_from_node(
+                    node,
+                    indexes["root_name"],
+                )
+            else:
+                remove_from_bill(
+                    nid,
+                )
+
+    else:
+
+        node = indexes["nodes_by_id"][
+            material_id
+        ]
+
+        if checked:
+            add_to_bill_from_node(
+                node,
+                indexes["root_name"],
+            )
+        else:
+            remove_from_bill(
+                material_id,
+            )
 
 # =============================================================================
 # SECTION 9 — NAVIGATION
