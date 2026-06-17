@@ -1509,9 +1509,6 @@ with st.sidebar:
         
             target = st.session_state.nav_target_id
         
-            st.write("target", target)
-            st.write("path", path_to_node(indexes, target))
-        
             path = path_to_node(
                 indexes,
                 target,
