@@ -41,6 +41,8 @@ MAX_INDENT_PX = INDENT_PX_PER_LEVEL * MAX_INDENT_LEVELS
 MAX_CHILD_SPACER = 0.24
 CHILD_SPACER_PER_LEVEL = 0.04
 PATH_SEP = "/"
+SUBMIT_MATERIAL_ID = "user_participation"
+
 # =============================================================================
 # SECTION 2 — CSS
 # =============================================================================
@@ -429,6 +431,45 @@ def search_materials(query: str) -> list[dict[str, Any]]:
 # =============================================================================
 # SECTION 6 — IN-MEMORY INDEXES
 # =============================================================================
+def build_submit_indexes() -> dict[str, Any]:
+    node = {
+        "id": SUBMIT_MATERIAL_ID,
+        "label": "Submit your data",
+        "props": {
+            "name": "User participation",
+            "comment": {
+                "title": "Submit data",
+                "repo": "Task2pt1/all_tasks_data",
+                "repo_url": "https://github.com/Task2pt1/all_tasks_data",
+                "pr_path": "incoming/<team>/<YYYY-MM-DD>/",
+                "example": "incoming/walls/2026-06-17/bom.csv",
+                "required": "category, name, quantity, unit, source",
+                "optional": "parent, synonyms, standards, region, engineering, LCA, transport, LCIA, cost",
+                "formats": "Word / txt / Pages / PDF, spreadsheet, or data-lake link",
+                "access_note": "email Lumin your GitHub username + email to be added to the private repo.",
+            },
+            "engineering": {
+                "participant_email": {
+                    "label": "What is your email address?",
+                    "placeholder": "you@university.edu",
+                    "help": "We use this to add you to the private GitHub repo.",
+                }
+            },
+        },
+        "depth": 0,
+        "parent_id": None,
+    }
+    return {
+        "root_id": SUBMIT_MATERIAL_ID,
+        "root_name": "User participation",
+        "rows": [node],
+        "nodes_by_id": {SUBMIT_MATERIAL_ID: node},
+        "children_by_parent": {},
+        "parent_by_id": {SUBMIT_MATERIAL_ID: None},
+        "depth_by_id": {SUBMIT_MATERIAL_ID: 0},
+        "descendants_by_id": {SUBMIT_MATERIAL_ID: []},
+    }
+
 def build_subtree_indexes(rows: list[dict[str, Any]], root_id: str) -> dict[str, Any]:
     nodes_by_id: dict[str, dict[str, Any]] = {}
     children_by_parent: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -1812,9 +1853,12 @@ with st.sidebar:
 
     if st.session_state.has_searched:
         root_id = st.session_state.path_ids[0]
-        root_rows = fetch_root_subtree(root_id)
-        indexes = build_subtree_indexes(root_rows, root_id)
-        st.session_state.root_indexes = indexes
+        if root_id == SUBMIT_MATERIAL_ID:
+            st.session_state.root_indexes = build_submit_indexes()
+        else:
+            root_rows = fetch_root_subtree(root_id)
+            st.session_state.root_indexes = build_subtree_indexes(root_rows, root_id)
+        indexes = st.session_state.root_indexes
         #
         target = (
             st.session_state.nav_target_id
@@ -1886,32 +1930,30 @@ with st.sidebar:
 # =============================================================================
 # SECTION 13 — MAIN AREA GATE
 # =============================================================================
-has_material = st.session_state.has_searched and bool(st.session_state.path_ids)
 
-if not has_material and not st.session_state.show_submit_tab:
+if not st.session_state.has_searched or not st.session_state.path_ids:
     st.info("Search for a material by name, id, or code to get started.")
     if st.button("Add data", key="go_submit_tab"):
-        st.session_state.show_submit_tab = True
+        st.session_state.has_searched = True
+        st.session_state.path_ids = [SUBMIT_MATERIAL_ID]
+        st.session_state.root_indexes = build_submit_indexes()
         st.rerun()
     st.stop()
 
-if has_material:
-    st.session_state.show_submit_tab = False
+if not st.session_state.root_indexes:
+    st.info("Loading material data…")
+    st.stop()
 
-    if not st.session_state.root_indexes:
-        st.info("Loading material data…")
-        st.stop()
+indexes = st.session_state.root_indexes
+current_id = st.session_state.path_ids[-1]
+node = indexes["nodes_by_id"].get(current_id)
 
-    indexes = st.session_state.root_indexes
-    current_id = st.session_state.path_ids[-1]
-    node = indexes["nodes_by_id"].get(current_id)
+if not node:
+    st.error("Could not load this material.")
+    st.stop()
 
-    if not node:
-        st.error("Could not load this material.")
-        st.stop()
-
-    direct_children = indexes["children_by_parent"].get(current_id, [])
-    subtree = get_subtree_rows_from_indexes(current_id, indexes)
+direct_children = indexes["children_by_parent"].get(current_id, [])
+subtree = get_subtree_rows_from_indexes(current_id, indexes)
     
 # =============================================================================
 # SECTION 14 — MAIN TABS
