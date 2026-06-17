@@ -1084,8 +1084,10 @@ def add_material_to_compare(material_id: str, material_name: str, category: str)
 
 def remove_material_from_compare(material_id: str) -> None:
     st.session_state.compare_materials = [
-        m for m in st.session_state.compare_materials if m["id"] != material_id
-    ]
+        m for m in st.session_state.compare_materials if m["id"] != material_id]
+    cmp_key = f"cmp_tree_{material_id}"
+    if cmp_key in st.session_state:
+        st.session_state[cmp_key] = False
 
 def on_compare_toggle(material_id: str, material_name: str, widget_key: str) -> None:
     if st.session_state[widget_key]:
