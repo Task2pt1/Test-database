@@ -1707,10 +1707,18 @@ if "expanded_material_ids" not in st.session_state:
     st.session_state.expanded_material_ids = set()
 elif isinstance(st.session_state.expanded_material_ids, list):
     st.session_state.expanded_material_ids = set(st.session_state.expanded_material_ids)
+
 if "show_submit_tab" not in st.session_state:
     st.session_state.show_submit_tab = False
+
 if "submit_email" not in st.session_state:
     st.session_state.submit_email = ""
+    
+if "active_main_tab" not in st.session_state:
+    st.session_state.active_main_tab = "Path + explore"
+
+if "submit_answers" not in st.session_state:
+    st.session_state.submit_answers = {}
 # =============================================================================
 # SECTION 11 — APP STARTUP
 # =============================================================================
@@ -1784,6 +1792,13 @@ with st.sidebar:
         st.session_state.expanded_material_ids = set()
         st.rerun()
     st.header("Navigation")
+    if st.button("Add data", key="sidebar_add_data", use_container_width=True):
+        st.session_state.has_searched = True
+        st.session_state.path_ids = [SUBMIT_MATERIAL_ID]
+        st.session_state.root_indexes = build_submit_indexes()
+        st.session_state.submit_answers = {}
+        st.session_state.active_main_tab = "Submit data"
+        st.rerun()
     
     with st.form("global_material_search", clear_on_submit=False):
         search_query = st.text_input("query", placeholder="", label_visibility="collapsed")
@@ -1926,7 +1941,10 @@ with st.sidebar:
 # =============================================================================
 # SECTION 13 — MAIN AREA GATE
 # =============================================================================
-
+if not st.session_state.has_searched or not st.session_state.path_ids:
+    st.info("Search for a material by name, id, or code to get started.")
+    st.stop()
+    
 if not st.session_state.has_searched or not st.session_state.path_ids:
     st.info("Search for a material by name, id, or code to get started.")
     if st.button("Add data", key="go_submit_tab"):
@@ -1952,11 +1970,17 @@ direct_children = indexes["children_by_parent"].get(current_id, [])
 subtree = get_subtree_rows_from_indexes(current_id, indexes)
     
 
-
-tab_path, tab_compare, tab_bom, tab_submit = st.tabs(
-    ["Path + explore", "Compare", "Export BOM", "Submit data"]
-)
-
+# =============================================================================
+# SECTION 14 — MAIN TABS
+# =============================================================================
+if current_id == SUBMIT_MATERIAL_ID:
+    tab_submit, tab_path, tab_compare, tab_bom = st.tabs(
+        ["Submit data", "Path + explore", "Compare", "Export BOM"]
+    )
+else:
+    tab_path, tab_compare, tab_bom, tab_submit = st.tabs(
+        ["Path + explore", "Compare", "Export BOM", "Submit data"]
+    )
 # --- TAB 1 ---
 with tab_path:
     root_id = st.session_state.path_ids[0]
