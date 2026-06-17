@@ -585,9 +585,9 @@ def render_node_all_categories(node: dict[str, Any]) -> None:
 )
         render_nested(None, block_val)
 
-
+#was min(depth * 0.055, 0.33)
 def tree_indent_fraction(depth: int) -> float:
-    return min(depth * 0.055, 0.33)
+    return min(depth * 0.065, 0.33)
 
 def render_material_tree_node(
     indexes: dict[str, Any],
@@ -637,7 +637,7 @@ def render_material_tree_node(
             st.session_state.expanded_material_ids.discard(node_id)
         else:
             st.session_state.expanded_material_ids.add(node_id)
-
+    #attribute indent
     indent_px = depth * 178
 
     st.markdown(
@@ -696,8 +696,8 @@ def render_material_tree_node(
         if is_open:
         
             if blocks:
-        
-                attr_indent = tree_indent_fraction(depth) + 0.02
+                # move attr blocks left go smaller
+                attr_indent = tree_indent_fraction(depth) - 0.02
         
                 _, body = st.columns(
                     [attr_indent, 1.0 - attr_indent],
