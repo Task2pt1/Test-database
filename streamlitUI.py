@@ -1726,12 +1726,7 @@ st.markdown(
     '<p class="app-title">Material Ontology Explorer</p>',
     unsafe_allow_html=True,
 )
-if st.button("Add data", key="top_add_data"):
-    st.session_state.has_searched = True
-    st.session_state.path_ids = [SUBMIT_MATERIAL_ID]
-    st.session_state.root_indexes = build_submit_indexes()
-    st.session_state.submit_answers = {}
-    st.rerun()
+
 # roots dropdown
 roots = get_root_nodes()
 root_map = {r["id"]: r["label"] for r in roots}
@@ -1964,19 +1959,30 @@ subtree = get_subtree_rows_from_indexes(current_id, indexes)
 # =============================================================================
 # SECTION 14 — MAIN TABS
 # =============================================================================
-tab_path, tab_compare, tab_bom, tab_submit = st.tabs(
-    ["Path + explore", "Compare", "Export BOM", "Submit data"]
+
+if current_id == SUBMIT_MATERIAL_ID:
+    st.session_state.active_main_tab = "Submit data"
+
+tab_names = ["Path + explore", "Compare", "Export BOM", "Submit data"]
+
+st.session_state.active_main_tab = st.radio(
+    "View",
+    tab_names,
+    index=tab_names.index(st.session_state.active_main_tab),
+    horizontal=True,
+    label_visibility="collapsed",
+    key="main_view_radio",
 )
-#--- TAB 1 ---
-with tab_path:
+
+if st.session_state.active_main_tab == "Path + explore":
     if current_id == SUBMIT_MATERIAL_ID:
-        st.info("Click **Submit data** tab →")
+        st.info("You are in Submit data mode.")
     else:
         root_id = st.session_state.path_ids[0]
         root_node = indexes["nodes_by_id"][root_id]
         render_material_tree_node(indexes, root_node, depth=0, path_ids=[])
-# --- TAB 2 ---
-with tab_compare:
+
+elif st.session_state.active_main_tab == "Compare":
     st.subheader("Compare materials")
 
     if len(st.session_state.compare_materials) < 2:
@@ -2027,8 +2033,7 @@ with tab_compare:
         else:
             render_material_compare(compare_material_nodes)
 
-# --- TAB 3 ---
-with tab_bom:
+elif st.session_state.active_main_tab == "Export BOM":
     st.subheader("Export BOM")
 
     bom_df = build_bom_dataframe()
@@ -2095,8 +2100,7 @@ with tab_bom:
             mime="text/csv",
         )
 
-# --- TAB 4 ---
-with tab_submit:
+elif st.session_state.active_main_tab == "Submit data":
     if current_id == SUBMIT_MATERIAL_ID:
         props = parse_props(node.get("props"))
         questions = props.get("participation", {}).get(
