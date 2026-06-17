@@ -588,7 +588,7 @@ def render_node_all_categories(node: dict[str, Any]) -> None:
 
 #was min(depth * 0.055, 0.33)
 def tree_indent_fraction(depth: int) -> float:
-    return min(depth * 1.05, 0.53)
+    return min(depth * 0.075, 0.53)
 
 def render_material_tree_node(
     indexes: dict[str, Any],
