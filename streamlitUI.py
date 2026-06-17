@@ -581,7 +581,7 @@ def render_node_all_categories(node: dict[str, Any]) -> None:
         if block_val in (None, "", {}, []):
             continue
         st.markdown(
-    f"#### {block_name}",
+    f"###### {block_name}",
 )
         #f"### or f"#### to be smaller
         render_nested(None, block_val)
