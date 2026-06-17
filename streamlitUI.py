@@ -707,13 +707,19 @@ def render_material_tree_node(
         
                 with body:
                     render_node_all_categories(node)
-        
+            #!
             for child in children:
-                render_material_tree_node(
-                    indexes,
-                    child,
-                    depth + 1,
+            
+                spacer, child_col = st.columns(
+                    [0.08 * (depth + 1), 1.0 - (0.08 * (depth + 1))]
                 )
+            
+                with child_col:
+                    render_material_tree_node(
+                        indexes,
+                        child,
+                        depth + 1,
+                    )
 
     st.markdown(
         "</div>",
