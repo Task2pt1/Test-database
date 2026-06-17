@@ -581,9 +581,9 @@ def render_node_all_categories(node: dict[str, Any]) -> None:
         if block_val in (None, "", {}, []):
             continue
         st.markdown(
-    f"###### {block_name}",
+    f"##### {block_name}",
 )
-        #f"### or f"#### to be smaller
+        #f"### or f"#### to be smaller main attr keys
         render_nested(None, block_val)
 
 #was min(depth * 0.055, 0.33)
@@ -860,7 +860,7 @@ def render_nested(key: str | None, obj: Any, level: int = 0) -> None:
         # --------------------------------------------------------------
         for child_key, child_val in obj.items():
 
-            st.markdown(f"##### {child_key}")
+            st.markdown(f"###### {child_key}")
 
             render_nested(
                 child_key,
