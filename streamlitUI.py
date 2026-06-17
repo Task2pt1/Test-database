@@ -437,23 +437,13 @@ def build_submit_indexes() -> dict[str, Any]:
         "label": "Submit your data",
         "props": {
             "name": "User participation",
-            "comment": {
-                "title": "Submit data",
-                "repo": "Task2pt1/all_tasks_data",
-                "repo_url": "https://github.com/Task2pt1/all_tasks_data",
-                "pr_path": "incoming/<team>/<YYYY-MM-DD>/",
-                "example": "incoming/walls/2026-06-17/bom.csv",
-                "required": "category, name, quantity, unit, source",
-                "optional": "parent, synonyms, standards, region, engineering, LCA, transport, LCIA, cost",
-                "formats": "Word / txt / Pages / PDF, spreadsheet, or data-lake link",
-                "access_note": "email Lumin your GitHub username + email to be added to the private repo.",
-            },
-            "engineering": {
-                "participant_email": {
-                    "label": "What is your email address?",
-                    "placeholder": "you@university.edu",
-                    "help": "We use this to add you to the private GitHub repo.",
-                }
+            "participation": {
+                "questions": [
+                    "What is your email address?",
+                    "What is your GitHub username?",
+                    "What is your team name?",
+                    "What is your name?",
+                ]
             },
         },
         "depth": 0,
@@ -1728,6 +1718,12 @@ st.markdown(
     '<p class="app-title">Material Ontology Explorer</p>',
     unsafe_allow_html=True,
 )
+if st.button("Add data", key="top_add_data"):
+    st.session_state.has_searched = True
+    st.session_state.path_ids = [SUBMIT_MATERIAL_ID]
+    st.session_state.root_indexes = build_submit_indexes()
+    st.session_state.submit_answers = {}
+    st.rerun()
 # roots dropdown
 roots = get_root_nodes()
 root_map = {r["id"]: r["label"] for r in roots}
@@ -2089,24 +2085,20 @@ with tab_bom:
 
 # --- TAB 4 ---
 with tab_submit:
+    props = parse_props(node.get("props"))
+    questions = props.get("participation", {}).get(
+        "questions",
+        ["What is your email address?"],
+    )
+
     st.subheader("Submit data")
 
-    st.session_state.submit_email = st.text_input(
-        "What is your email address?",
-        value=st.session_state.submit_email,
-        placeholder="you@university.edu",
-    )
+    if "submit_answers" not in st.session_state:
+        st.session_state.submit_answers = {}
 
-    st.markdown(
-        "Private repo: [`Task2pt1/all_tasks_data`](https://github.com/Task2pt1/all_tasks_data)"
-    )
-    st.markdown(
-        "Submit a Pull Request to `incoming/<team>/<YYYY-MM-DD>/` "
-        "(example: `incoming/walls/2026-06-17/bom.csv`)."
-    )
-    st.markdown(
-        "**Required:** category, name, quantity, unit, source  \n"
-        "**Optional:** parent, synonyms, standards, region, engineering, LCA, transport, LCIA, cost  \n"
-        "**Formats:** Word / txt / Pages / PDF, spreadsheet, or data-lake link"
-    )
-    st.markdown("**Access:** email Lumin your GitHub username + email to be added to the private repo.")
+    for i, question in enumerate(questions):
+        st.session_state.submit_answers[question] = st.text_input(
+            question,
+            value=st.session_state.submit_answers.get(question, ""),
+            key=f"submit_answer_{i}",
+        )
