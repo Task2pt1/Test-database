@@ -1676,6 +1676,10 @@ if "expanded_material_ids" not in st.session_state:
     st.session_state.expanded_material_ids = set()
 elif isinstance(st.session_state.expanded_material_ids, list):
     st.session_state.expanded_material_ids = set(st.session_state.expanded_material_ids)
+if "show_submit_tab" not in st.session_state:
+    st.session_state.show_submit_tab = False
+if "submit_email" not in st.session_state:
+    st.session_state.submit_email = ""
 # =============================================================================
 # SECTION 11 — APP STARTUP
 # =============================================================================
@@ -1882,25 +1886,33 @@ with st.sidebar:
 # =============================================================================
 # SECTION 13 — MAIN AREA GATE
 # =============================================================================
-if not st.session_state.has_searched or not st.session_state.path_ids:
+has_material = st.session_state.has_searched and bool(st.session_state.path_ids)
+
+if not has_material and not st.session_state.show_submit_tab:
     st.info("Search for a material by name, id, or code to get started.")
+    if st.button("Add data", key="go_submit_tab"):
+        st.session_state.show_submit_tab = True
+        st.rerun()
     st.stop()
 
-if not st.session_state.root_indexes:
-    st.info("Loading material data…")
-    st.stop()
+if has_material:
+    st.session_state.show_submit_tab = False
 
-indexes = st.session_state.root_indexes
-current_id = st.session_state.path_ids[-1]
-node = indexes["nodes_by_id"].get(current_id)
+    if not st.session_state.root_indexes:
+        st.info("Loading material data…")
+        st.stop()
 
-if not node:
-    st.error("Could not load this material.")
-    st.stop()
+    indexes = st.session_state.root_indexes
+    current_id = st.session_state.path_ids[-1]
+    node = indexes["nodes_by_id"].get(current_id)
 
-direct_children = indexes["children_by_parent"].get(current_id, [])
-subtree = get_subtree_rows_from_indexes(current_id, indexes)
+    if not node:
+        st.error("Could not load this material.")
+        st.stop()
 
+    direct_children = indexes["children_by_parent"].get(current_id, [])
+    subtree = get_subtree_rows_from_indexes(current_id, indexes)
+    
 
 # =============================================================================
 # SECTION 14 — MAIN TABS
@@ -1908,7 +1920,42 @@ subtree = get_subtree_rows_from_indexes(current_id, indexes)
 tab_path, tab_compare, tab_bom, tab_submit = st.tabs(
     ["Path + explore", "Compare", "Export BOM", "Submit data"]
 )
+# =============================================================================
+# SECTION 14 — MAIN TABS
+# =============================================================================
 
+if st.session_state.show_submit_tab and not has_material:
+    if st.button("← Back"):
+        st.session_state.show_submit_tab = False
+        st.rerun()
+
+    st.subheader("Submit data")
+
+    st.session_state.submit_email = st.text_input(
+        "What is your email address?",
+        value=st.session_state.submit_email,
+        placeholder="you@university.edu",
+    )
+
+    if st.session_state.submit_email:
+        st.success(f"Saved: {st.session_state.submit_email}")
+
+    st.markdown(
+        "Private repo: [`Task2pt1/all_tasks_data`](https://github.com/Task2pt1/all_tasks_data)"
+    )
+    st.markdown(
+        "Submit a Pull Request to `incoming/<team>/<YYYY-MM-DD>/` "
+        "(example: `incoming/walls/2026-06-17/bom.csv`)."
+    )
+    st.markdown(
+        "**Required:** category, name, quantity, unit, source  \n"
+        "**Optional:** parent, synonyms, standards, region, engineering, LCA, transport, LCIA, cost"
+    )
+    st.stop()
+
+tab_path, tab_compare, tab_bom, tab_submit = st.tabs(
+    ["Path + explore", "Compare", "Export BOM", "Submit data"]
+)
 # --- TAB 1 ---
 
 with tab_path:
@@ -2064,6 +2111,12 @@ with tab_bom:
 
 with tab_submit:
     st.subheader("Submit data")
+
+    st.session_state.submit_email = st.text_input(
+        "What is your email address?",
+        value=st.session_state.submit_email,
+        placeholder="you@university.edu",
+    )
     st.markdown(
         "Private repo: [`Task2pt1/all_tasks_data`](https://github.com/Task2pt1/all_tasks_data)"
     )
