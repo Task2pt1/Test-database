@@ -1735,7 +1735,7 @@ browse_options = [""] + list(root_map.keys())
 
 current_root_id = (
     st.session_state.path_ids[0]
-    if st.session_state.path_ids
+    if st.session_state.path_ids and st.session_state.path_ids[0] in root_map
     else ""
 )
 
@@ -1955,39 +1955,7 @@ if not node:
 direct_children = indexes["children_by_parent"].get(current_id, [])
 subtree = get_subtree_rows_from_indexes(current_id, indexes)
     
-# =============================================================================
-# SECTION 14 — MAIN TABS
-# =============================================================================
 
-if st.session_state.show_submit_tab and not has_material:
-    if st.button("← Back"):
-        st.session_state.show_submit_tab = False
-        st.rerun()
-
-    st.subheader("Submit data")
-
-    st.session_state.submit_email = st.text_input(
-        "What is your email address?",
-        value=st.session_state.submit_email,
-        placeholder="you@university.edu",
-    )
-
-    if st.session_state.submit_email:
-        st.success(f"Saved: {st.session_state.submit_email}")
-
-    st.markdown(
-        "Private repo: [`Task2pt1/all_tasks_data`](https://github.com/Task2pt1/all_tasks_data)"
-    )
-    st.markdown(
-        "Submit a Pull Request to `incoming/<team>/<YYYY-MM-DD>/` "
-        "(example: `incoming/walls/2026-06-17/bom.csv`)."
-    )
-    st.markdown(
-        "**Required:** category, name, quantity, unit, source  \n"
-        "**Optional:** parent, synonyms, standards, region, engineering, LCA, transport, LCIA, cost  \n"
-        "**Formats:** Word / txt / Pages / PDF, spreadsheet, or data-lake link"
-    )
-    st.stop()
 
 tab_path, tab_compare, tab_bom, tab_submit = st.tabs(
     ["Path + explore", "Compare", "Export BOM", "Submit data"]
