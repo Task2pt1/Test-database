@@ -1770,7 +1770,13 @@ if browse_pick != current_root_id:
 # SECTION 12 — SIDEBAR
 # =============================================================================
 with st.sidebar:
-
+    if st.button("Add data", key="sidebar_add_data", use_container_width=True):
+        st.session_state.has_searched = True
+        st.session_state.path_ids = [SUBMIT_MATERIAL_ID]
+        st.session_state.root_indexes = build_submit_indexes()
+        st.session_state.submit_answers = {}
+        st.session_state.active_main_tab = "Submit data"
+        st.rerun()
     if st.button("Clear", use_container_width=True):
         st.session_state.has_searched = False
         st.session_state.path_ids = []
@@ -1785,15 +1791,10 @@ with st.sidebar:
         st.session_state.show_compare_view = False
         st.session_state.bom = {}
         st.session_state.expanded_material_ids = set()
+        st.session_state.submit_answers = {}
+        st.session_state.active_main_tab = "Path + explore"
         st.rerun()
     st.header("Navigation")
-    if st.button("Add data", key="sidebar_add_data", use_container_width=True):
-        st.session_state.has_searched = True
-        st.session_state.path_ids = [SUBMIT_MATERIAL_ID]
-        st.session_state.root_indexes = build_submit_indexes()
-        st.session_state.submit_answers = {}
-        st.session_state.active_main_tab = "Submit data"
-        st.rerun()
         
     with st.form("global_material_search", clear_on_submit=False):
         search_query = st.text_input("query", placeholder="", label_visibility="collapsed")
