@@ -1101,75 +1101,101 @@ def on_compare_toggle(material_id: str, material_name: str, widget_key: str) -> 
 
 
 def render_parts_compare(parts: list[dict[str, str]]) -> None:
-    if len(parts) < 2:
-        st.caption("Select at least 2 materials to compare.")
+
+    if not parts:
+        st.info("No comparable attributes found.")
         return
 
-    rows_by_material: dict[str, dict[str, str]] = defaultdict(dict)
-    material_names: dict[str, str] = {}
+    rows_by_material = defaultdict(dict)
+    material_names = {}
 
     for part in parts:
+
         material_id = part["material_id"]
+
         material_names[material_id] = part["material_name"]
-        rows_by_material[material_id][part["attribute"]] = part["value"]
+
+        rows_by_material[material_id][part["attribute"]] = {
+            "value": part.get("value", ""),
+            "unit": part.get("unit", ""),
+        }
 
     ordered_material_ids = list(material_names.keys())
+
     all_attributes = sorted(
         {
-            attribute
-            for material_id in ordered_material_ids
-            for attribute in rows_by_material[material_id].keys()
+            attr
+            for mid in ordered_material_ids
+            for attr in rows_by_material[mid]
         }
     )
 
     if not all_attributes:
-        st.caption("No comparable attributes found.")
+        st.info("No comparable attributes found.")
         return
 
-    show_only_differences = st.checkbox(
-        "Show only differing attributes",
-        value=True,
-        key="compare_show_only_differences",
-    )
+    common_attributes = []
+    unique_attributes = []
 
-    kept_attributes: list[str] = []
-    for attribute in all_attributes:
-        values = []
-        for material_id in ordered_material_ids:
-            value = rows_by_material[material_id].get(attribute, "").strip()
-            if value:
-                values.append(value)
-        unique_values = set(values)
-        if not show_only_differences or len(unique_values) > 1:
-            kept_attributes.append(attribute)
+    for attr in all_attributes:
 
-    if not kept_attributes:
-        st.caption("No differing attributes across selected materials.")
-        return
+        present_count = sum(
+            1
+            for mid in ordered_material_ids
+            if attr in rows_by_material[mid]
+        )
 
-    compare_rows: list[dict[str, str]] = []
-    for material_id in ordered_material_ids:
+        if present_count == len(ordered_material_ids):
+            common_attributes.append(attr)
+        else:
+            unique_attributes.append(attr)
+
+    ordered_attributes = common_attributes + unique_attributes
+
+    compare_rows = []
+
+    for attr in ordered_attributes:
+
+        first_unit = ""
+
+        for mid in ordered_material_ids:
+
+            cell = rows_by_material[mid].get(attr)
+
+            if cell and cell.get("unit"):
+                first_unit = cell["unit"]
+                break
+
         row = {
-            "material": material_names[material_id],
+            "Attribute": (
+                attr.split(".")[-1]
+                .replace("_", " ")
+                .title()
+            ),
+            "Unit": first_unit,
         }
-        for attribute in kept_attributes:
-            row[attribute] = rows_by_material[material_id].get(attribute, "")
+
+        for mid in ordered_material_ids:
+
+            cell = rows_by_material[mid].get(attr)
+
+            row[
+                material_names[mid]
+            ] = (
+                cell["value"]
+                if cell
+                else ""
+            )
+
         compare_rows.append(row)
 
     df = pd.DataFrame(compare_rows)
-
-    renamed_columns = {
-        col: col.replace(".", " › ")
-        for col in df.columns
-        if col != "material"
-    }
-    df = df.rename(columns=renamed_columns)
 
     st.dataframe(
         df,
         use_container_width=True,
         hide_index=True,
-        height=min(220 + 48 * len(df), 900),
+        height=900,
     )
 
     st.download_button(
