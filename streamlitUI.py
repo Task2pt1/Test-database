@@ -1742,9 +1742,44 @@ with st.sidebar:
         st.session_state.bom = {}
         st.session_state.expanded_material_ids = set()
         st.rerun()
-
     st.header("Navigation")
 
+    # -----------------------------
+    # Data submission instructions
+    # -----------------------------
+    st.markdown("### Submit data")
+    st.markdown(
+        "Private data repository: "
+        "[`Task2pt1/all_tasks_data`](https://github.com/Task2pt1/all_tasks_data)"
+    )
+
+    request_email = st.text_input(
+        "Email (for access request)",
+        placeholder="name@domain.com",
+    )
+    request_github = st.text_input(
+        "GitHub username",
+        placeholder="your-username",
+    )
+
+    st.caption(
+        "To submit: open a Pull Request adding your file to "
+        "`incoming/<team>/<YYYY-MM-DD>/` (example: `incoming/walls/2026-06-17/bom.csv`)."
+    )
+
+    if st.button("Show submission checklist", use_container_width=True):
+        st.info(
+            "Include for each item: Category, Name, Quantity, Unit, Source (Parent optional). "
+            "Formats: Word/txt/Pages/PDF, spreadsheet, or a data-lake link."
+        )
+
+    if st.button("Request repo access (instructions)", use_container_width=True):
+        st.info(
+            f"Email Lumin with:\n"
+            f"- Email: {request_email or '<your email>'}\n"
+            f"- GitHub username: {request_github or '<your GitHub username>'}\n"
+            f"Then you will be added to the private repo."
+        )
     with st.form("global_material_search", clear_on_submit=False):
         search_query = st.text_input("query", placeholder="", label_visibility="collapsed")
         search_submitted = st.form_submit_button("Search")
