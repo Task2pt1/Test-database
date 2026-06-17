@@ -1945,15 +1945,6 @@ if not st.session_state.has_searched or not st.session_state.path_ids:
     st.info("Search for a material by name, id, or code to get started.")
     st.stop()
     
-if not st.session_state.has_searched or not st.session_state.path_ids:
-    st.info("Search for a material by name, id, or code to get started.")
-    if st.button("Add data", key="go_submit_tab"):
-        st.session_state.has_searched = True
-        st.session_state.path_ids = [SUBMIT_MATERIAL_ID]
-        st.session_state.root_indexes = build_submit_indexes()
-        st.rerun()
-    st.stop()
-
 if not st.session_state.root_indexes:
     st.info("Loading material data…")
     st.stop()
@@ -1973,20 +1964,17 @@ subtree = get_subtree_rows_from_indexes(current_id, indexes)
 # =============================================================================
 # SECTION 14 — MAIN TABS
 # =============================================================================
-if current_id == SUBMIT_MATERIAL_ID:
-    tab_submit, tab_path, tab_compare, tab_bom = st.tabs(
-        ["Submit data", "Path + explore", "Compare", "Export BOM"]
-    )
-else:
-    tab_path, tab_compare, tab_bom, tab_submit = st.tabs(
-        ["Path + explore", "Compare", "Export BOM", "Submit data"]
-    )
-# --- TAB 1 ---
+tab_path, tab_compare, tab_bom, tab_submit = st.tabs(
+    ["Path + explore", "Compare", "Export BOM", "Submit data"]
+)
+#--- TAB 1 ---
 with tab_path:
-    root_id = st.session_state.path_ids[0]
-    root_node = indexes["nodes_by_id"][root_id]
-    render_material_tree_node(indexes, root_node, depth=0, path_ids=[])
-
+    if current_id == SUBMIT_MATERIAL_ID:
+        st.info("Click **Submit data** tab →")
+    else:
+        root_id = st.session_state.path_ids[0]
+        root_node = indexes["nodes_by_id"][root_id]
+        render_material_tree_node(indexes, root_node, depth=0, path_ids=[])
 # --- TAB 2 ---
 with tab_compare:
     st.subheader("Compare materials")
@@ -2109,20 +2097,18 @@ with tab_bom:
 
 # --- TAB 4 ---
 with tab_submit:
-    props = parse_props(node.get("props"))
-    questions = props.get("participation", {}).get(
-        "questions",
-        ["What is your email address?"],
-    )
-
-    st.subheader("Submit data")
-
-    if "submit_answers" not in st.session_state:
-        st.session_state.submit_answers = {}
-
-    for i, question in enumerate(questions):
-        st.session_state.submit_answers[question] = st.text_input(
-            question,
-            value=st.session_state.submit_answers.get(question, ""),
-            key=f"submit_answer_{i}",
+    if current_id == SUBMIT_MATERIAL_ID:
+        props = parse_props(node.get("props"))
+        questions = props.get("participation", {}).get(
+            "questions",
+            ["What is your email address?"],
         )
+        st.subheader("Submit data")
+        for i, question in enumerate(questions):
+            st.session_state.submit_answers[question] = st.text_input(
+                question,
+                value=st.session_state.submit_answers.get(question, ""),
+                key=f"submit_answer_{i}",
+            )
+    else:
+        st.info("Click **Add data** in the sidebar to start.")
