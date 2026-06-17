@@ -4,8 +4,6 @@
 # =============================================================================
 # SECTION 1 — SETUP
 # =============================================================================
-from __future__ import annotations
-
 import json
 from collections import defaultdict, deque
 from typing import Any
@@ -13,6 +11,18 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 from neo4j import Driver, GraphDatabase
+import base64
+import json
+import requests
+
+from collections import defaultdict, deque
+from typing import Any
+
+import pandas as pd
+import streamlit as st
+from neo4j import Driver, GraphDatabase
+
+
 
 st.set_page_config(page_title="Material Ontology Explorer", layout="wide")
 
@@ -343,6 +353,42 @@ def node_name(node: dict[str, Any]) -> str:
 # =============================================================================
 # SECTION 5 — NEO4J FETCHES
 # =============================================================================
+def upload_submission_to_repo(
+    filename: str,
+    file_bytes: bytes,
+    email: str,
+) -> None:
+
+    owner = st.secrets["GITHUB_OWNER"]
+    repo = st.secrets["GITHUB_REPO"]
+    token = st.secrets["GITHUB_TOKEN"]
+
+    path = f"incoming/{email}/{filename}"
+
+    url = (
+        f"https://api.github.com/repos/"
+        f"{owner}/{repo}/contents/{path}"
+    )
+
+    payload = {
+        "message": f"submission {filename}",
+        "content": base64.b64encode(file_bytes).decode("utf-8"),
+        "branch": "main",
+    }
+
+    r = requests.put(
+        url,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+        },
+        json=payload,
+        timeout=60,
+    )
+
+    if r.status_code not in (200, 201):
+        raise RuntimeError(r.text)
+        
 def get_root_nodes() -> list[dict[str, str]]:
     return run_query(
         f"""
@@ -425,9 +471,49 @@ def search_materials(query: str) -> list[dict[str, Any]]:
             root.id AS root_id
         ORDER BY rank_score, label
         """,
-        {"q": q},
+        {"q": q})
+
+
+def upload_submission_to_repo(
+    filename: str,
+    file_bytes: bytes,
+    email: str,
+) -> None:
+
+    owner = st.secrets["GITHUB_OWNER"]
+    repo = st.secrets["GITHUB_REPO"]
+    token = st.secrets["GITHUB_TOKEN"]
+
+    path = f"incoming/{email}/{filename}"
+
+    url = (
+        f"https://api.github.com/repos/"
+        f"{owner}/{repo}/contents/{path}"
     )
-    
+
+    payload = {
+        "message": f"submission {filename}",
+        "content": base64.b64encode(file_bytes).decode("utf-8"),
+        "branch": "main",
+    }
+
+    r = requests.put(
+        url,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+        },
+        json=payload,
+        timeout=60,
+    )
+
+    if r.status_code not in (200, 201):
+        raise RuntimeError(r.text)
+
+
+# =============================================================================
+# SECTION 6 — IN-MEMORY INDEXES
+# =============================================================================
 # =============================================================================
 # SECTION 6 — IN-MEMORY INDEXES
 # =============================================================================
@@ -2140,7 +2226,16 @@ with tab_submit:
                     "filename": upload.name,
                     "bytes": upload.getvalue(),
                 }
-                st.success("Submitted.")
+                #
+                try:
+                    upload_submission_to_repo(
+                        filename=upload.name,
+                        file_bytes=upload.getvalue(),
+                        email=email_clean,
+                    )
+                    st.success("Submitted and uploaded to GitHub.")
+                except Exception as e:
+                    st.error(f"GitHub upload failed: {e}")
                 st.markdown(
                     f"**Name:** {name_clean}  \n"
                     f"**Email:** {email_clean}  \n"
