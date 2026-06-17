@@ -707,11 +707,11 @@ def render_material_tree_node(
         
                 with body:
                     render_node_all_categories(node)
-            #!
+            #! sub indent
             for child in children:
             
                 spacer, child_col = st.columns(
-                    [0.08 * (depth + 1), 1.0 - (0.08 * (depth + 1))]
+                    [0.06 * (depth + 1), 1.0 - (0.05 * (depth + 1))]
                 )
             
                 with child_col:
