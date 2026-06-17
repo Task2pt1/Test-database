@@ -2099,23 +2099,18 @@ with tab_bom:
 with tab_submit:
     if current_id == SUBMIT_MATERIAL_ID:
         st.subheader("Submit data")
-        st.caption(
-            "Enter your approved email, your name, what this data is, "
-            "and attach a file."
+        st.caption("Fill everything, then click **Submit**.")
+
+        email = st.text_input("Email")
+        name = st.text_input("Name")
+        title = st.text_input("Title (which data is this?)")
+        comments = st.text_area("Comments (optional)", height=100)
+        upload = st.file_uploader(
+            "File",
+            type=["csv", "txt", "pdf", "xlsx", "xls", "json"],
         )
 
-        with st.form("submit_data_form", clear_on_submit=False):
-            email = st.text_input("Email")
-            name = st.text_input("Name")
-            title = st.text_input("Title (which data is this?)")
-            comments = st.text_area("Comments (optional)", height=100)
-            upload = st.file_uploader(
-                "File",
-                type=["csv", "txt", "pdf", "xlsx", "xls", "json"],
-            )
-            sent = st.form_submit_button("Submit")
-
-        if sent:
+        if st.button("Submit", type="primary", use_container_width=True):
             email_clean = email.strip().lower()
             name_clean = name.strip()
             title_clean = title.strip()
@@ -2129,13 +2124,11 @@ with tab_submit:
             if not email_clean:
                 st.error("Enter your email address.")
             elif email_clean not in allowed:
-                st.error(
-                    "This email is not approved yet. Contact Lumin."
-                )
+                st.error("This email is not approved yet. Contact Lumin.")
             elif not name_clean:
                 st.error("Enter your name.")
             elif not title_clean:
-                st.error("Enter a title describing which data this is.")
+                st.error("Enter a title.")
             elif upload is None:
                 st.error("Attach a file.")
             else:
