@@ -581,8 +581,9 @@ def render_node_all_categories(node: dict[str, Any]) -> None:
         if block_val in (None, "", {}, []):
             continue
         st.markdown(
-    f"### {block_name}",
+    f"#### {block_name}",
 )
+        #f"### or f"#### to be smaller
         render_nested(None, block_val)
 
 #was min(depth * 0.055, 0.33)
@@ -638,7 +639,7 @@ def render_material_tree_node(
         else:
             st.session_state.expanded_material_ids.add(node_id)
     #attribute indent
-    indent_px = depth * 178
+    indent_px = depth * 78
 
     st.markdown(
         f"""
