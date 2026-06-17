@@ -698,7 +698,10 @@ def render_material_tree_node(
         
             if blocks:
                 # move attr blocks left go smaller
-                attr_indent = max(tree_indent_fraction(depth)) 
+                attr_indent = max(
+                    tree_indent_fraction(depth),
+                    0.01,
+                )
         
                 _, body = st.columns(
                     [attr_indent, 1.0 - attr_indent],
