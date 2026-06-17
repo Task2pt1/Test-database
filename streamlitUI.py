@@ -35,7 +35,12 @@ ATTR_BLOCKS = (
 META_KEYS = {"name", "id", "code", "database", "vector", "placement"}
 
 FILTER_ATTR_OPTIONS = ["(no filter)",  *ATTR_BLOCKS]
-
+INDENT_PX_PER_LEVEL = 78
+MAX_INDENT_LEVELS = 6
+MAX_INDENT_PX = INDENT_PX_PER_LEVEL * MAX_INDENT_LEVELS
+MAX_CHILD_SPACER = 0.24
+CHILD_SPACER_PER_LEVEL = 0.04
+PATH_SEP = "/"
 # =============================================================================
 # SECTION 2 — CSS
 # =============================================================================
@@ -505,6 +510,12 @@ def get_subtree_rows_from_indexes(node_id: str, indexes: dict[str, Any]) -> list
 # SECTION 7 — FILTER, COMPARE, AND CURRENT-NODE DISPLAY
 # =============================================================================
 
+def material_path_key(path_ids: list[str]) -> str:
+    return PATH_SEP.join(path_ids)
+
+def tree_widget_key(prefix: str, path_ids: list[str]) -> str:
+    return f"{prefix}{PATH_SEP}{material_path_key(path_ids)}"
+    
 def all_node_data(node: dict[str, Any]) -> dict[str, Any]:
     """Every property on the node — no ATTR_BLOCKS filter."""
     return parse_props(node.get("props"))
@@ -586,24 +597,39 @@ def render_node_all_categories(node: dict[str, Any]) -> None:
         #f"### or f"#### to be smaller main attr keys
         render_nested(None, block_val)
 
-#was min(depth * 0.055, 0.33)
-def tree_indent_fraction(depth: int) -> float:
-    return min(depth * 0.075, 0.53)
 
+def capped_tree_depth(depth: int) -> int:
+    return min(max(depth, 0), MAX_INDENT_LEVELS)
+
+
+def tree_indent_px(depth: int) -> int:
+    return capped_tree_depth(depth) * INDENT_PX_PER_LEVEL
+
+
+def tree_indent_fraction(depth: int) -> float:
+    # attribute block column indent inside expanded node
+    return min(capped_tree_depth(depth) * 0.075, MAX_CHILD_SPACER + 0.29)
+    # 6 * 0.075 = 0.45, cap below ~0.53 you had before
+
+
+def tree_child_spacer_fraction(depth: int) -> float:
+    # spacer before recursive child render
+    return min(capped_tree_depth(depth + 1) * CHILD_SPACER_PER_LEVEL, MAX_CHILD_SPACER)
+    
 def render_material_tree_node(
     indexes: dict[str, Any],
     node: dict[str, Any],
     depth: int = 0,
+    path_ids: list[str] | None = None,
 ) -> None:
-
     node_id = node["id"]
+    path_ids = list(path_ids or []) + [node_id]
 
     if not tree_node_visible(indexes, node_id):
         return
 
     cname = node_name(node)
     children = indexes["children_by_parent"].get(node_id, [])
-
     props = parse_props(node.get("props"))
 
     blocks = {
@@ -611,50 +637,30 @@ def render_material_tree_node(
         for k, v in props.items()
         if k not in META_KEYS and v not in (None, "", {}, [])
     }
-
     value_count = len(flatten_blocks(blocks)) if blocks else 0
-
     is_open = node_id in st.session_state.expanded_material_ids
 
     title = cname
-
     if children:
         title += f" ({len(children)} submaterials)"
-
     if value_count:
         title += f" [{value_count} values]"
 
-    #
-    label = title
-    arrow = "▼" if is_open else "▶"
-    arrow_color = "#ff4b4b" if is_open else "#ffffff"
+    cmp_key = tree_widget_key("cmp_tree", path_ids)
+    bom_key = tree_widget_key("bom_tree", path_ids)
+    toggle_key = tree_widget_key("tree_toggle", path_ids)
 
-    cmp_key = f"cmp_tree_{node_id}"
-    bom_key = f"bill_tree_{node_id}"
-    #
     def toggle_expand() -> None:
-
         if node_id in st.session_state.expanded_material_ids:
             st.session_state.expanded_material_ids.discard(node_id)
         else:
             st.session_state.expanded_material_ids.add(node_id)
-    #attribute indent
-    indent_px = depth * 78
 
-    st.markdown(
-        f"""
-        <div style="margin-left:{indent_px}px;">
-        """,
-        unsafe_allow_html=True,
-    )
+    indent_px = tree_indent_px(depth)
+    st.markdown(f'<div style="margin-left:{indent_px}px;">', unsafe_allow_html=True)
 
     with st.container(border=True):
-
-        compare_col, bom_col, _ = st.columns(
-            [1.5,1.5,7],
-            gap="small",
-            vertical_alignment="center",
-        )
+        compare_col, bom_col, _ = st.columns([1.5, 1.5, 7], gap="small", vertical_alignment="center")
 
         with compare_col:
             st.checkbox(
@@ -675,59 +681,26 @@ def render_material_tree_node(
             )
 
         arrow = "▼" if is_open else "▶"
+        label = f":red[{arrow} {title}]" if is_open else f"{arrow} {title}"
 
-        label = (
-            f":red[{arrow} {title}]"
-            if is_open
-            else f"{arrow} {title}"
-        )
-
-        #
-        clicked = st.button(
-            label,
-            key=f"tree_toggle_{node_id}",
-            use_container_width=True,
-        )
-        
-        if clicked:
+        if st.button(label, key=toggle_key, use_container_width=True):
             toggle_expand()
             st.rerun()
-            
-        #
+
         if is_open:
-        
             if blocks:
-                # move attr blocks left go smaller
-                attr_indent = max(
-                    tree_indent_fraction(depth),
-                    0.01,
-                )
-        
-                _, body = st.columns(
-                    [attr_indent, 1.0 - attr_indent],
-                    gap="small",
-                )
-        
+                attr_indent = max(tree_indent_fraction(depth), 0.01)
+                _, body = st.columns([attr_indent, 1.0 - attr_indent], gap="small")
                 with body:
                     render_node_all_categories(node)
-            #! sub indent
-            for child in children:
-                indent = 0.04 * (depth + 1)
-                spacer, child_col = st.columns(
-                    [indent, 1.0]
-                )
-            
-                with child_col:
-                    render_material_tree_node(
-                        indexes,
-                        child,
-                        depth + 1,
-                    )
 
-    st.markdown(
-        "</div>",
-        unsafe_allow_html=True,
-    )
+            for child in children:
+                spacer_frac = max(tree_child_spacer_fraction(depth), 0.01)
+                spacer, child_col = st.columns([spacer_frac, 1.0 - spacer_frac])
+                with child_col:
+                    render_material_tree_node(indexes, child, depth + 1, path_ids=path_ids)
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def cell_to_display(v: Any) -> Any:
@@ -1084,10 +1057,13 @@ def add_material_to_compare(material_id: str, material_name: str, category: str)
 
 def remove_material_from_compare(material_id: str) -> None:
     st.session_state.compare_materials = [
-        m for m in st.session_state.compare_materials if m["id"] != material_id]
-    cmp_key = f"cmp_tree_{material_id}"
-    if cmp_key in st.session_state:
-        st.session_state[cmp_key] = False
+        m for m in st.session_state.compare_materials if m["id"] != material_id
+    ]
+    for key in list(st.session_state.keys()):
+        if key.startswith("cmp_tree/") and key.endswith(f"/{material_id}"):
+            st.session_state[key] = False
+        elif key == f"cmp_tree/{material_id}":
+            st.session_state[key] = False
 
 def on_compare_toggle(material_id: str, material_name: str, widget_key: str) -> None:
     if st.session_state[widget_key]:
@@ -1939,7 +1915,7 @@ with tab_path:
     root_id = st.session_state.path_ids[0]
     root_node = indexes["nodes_by_id"][root_id]
 
-    render_material_tree_node(indexes, root_node, depth=0)
+    render_material_tree_node(indexes, root_node, depth=0, path_ids=[])
 
 # --- TAB 2 ---
 with tab_compare:
