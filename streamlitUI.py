@@ -1794,7 +1794,7 @@ with st.sidebar:
         st.session_state.submit_answers = {}
         st.session_state.active_main_tab = "Submit data"
         st.rerun()
-    
+        
     with st.form("global_material_search", clear_on_submit=False):
         search_query = st.text_input("query", placeholder="", label_visibility="collapsed")
         search_submitted = st.form_submit_button("Search")
@@ -1964,6 +1964,14 @@ if current_id == SUBMIT_MATERIAL_ID:
     st.session_state.active_main_tab = "Submit data"
 
 tab_names = ["Path + explore", "Compare", "Export BOM", "Submit data"]
+
+if current_id == SUBMIT_MATERIAL_ID:
+    st.session_state.active_main_tab = "Submit data"
+
+tab_names = ["Path + explore", "Compare", "Export BOM", "Submit data"]
+
+if st.session_state.active_main_tab not in tab_names:
+    st.session_state.active_main_tab = "Path + explore"
 
 st.session_state.active_main_tab = st.radio(
     "View",
