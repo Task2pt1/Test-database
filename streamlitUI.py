@@ -860,7 +860,7 @@ def render_nested(key: str | None, obj: Any, level: int = 0) -> None:
         # --------------------------------------------------------------
         for child_key, child_val in obj.items():
 
-            st.markdown(f"#### {child_key}")
+            st.markdown(f"##### {child_key}")
 
             render_nested(
                 child_key,
